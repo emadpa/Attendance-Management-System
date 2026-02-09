@@ -1,0 +1,148 @@
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: light dark;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #242424;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  place-items: center;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+#root {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+.app-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
+}
+
+.camera-container {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+  border: 2px solid #555;
+  width: 640px;
+  height: 480px;
+  background: #000;
+}
+
+.webcam-view {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.overlay.scanning {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 255, 0, 0.1);
+  border: 4px solid #0f0;
+  box-sizing: border-box;
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(0, 255, 0, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(0, 255, 0, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(0, 255, 0, 0); }
+}
+
+.status-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  background: #333;
+  padding: 2rem;
+  border-radius: 8px;
+  width: 100%;
+  max-width: 600px;
+}
+
+.status-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1rem;
+  border-radius: 8px;
+  background: #444;
+}
+
+.status-card.idle { border-left: 5px solid #888; }
+.status-card.checking { border-left: 5px solid #00f; }
+.status-card.success { border-left: 5px solid #0f0; background: #1a421a; }
+.status-card.rejected { border-left: 5px solid #f00; background: #421a1a; }
+
+.status-card h2 { margin: 0.5rem 0; font-size: 1.5rem; }
+
+.controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.verify-btn {
+  background: #646cff;
+  color: white;
+  border: none;
+  padding: 0.8rem 1.6rem;
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.verify-btn:hover { background: #535bf2; }
+.verify-btn:disabled { background: #555; cursor: not-allowed; }
+
+.gates-indicator {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.gate {
+  padding: 0.5rem 1rem;
+  background: #555;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  opacity: 0.5;
+}
+
+.gate.passed {
+  background: #0a0;
+  opacity: 1;
+  font-weight: bold;
+}
+
+.spinner {
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #3498db;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
