@@ -1,42 +1,470 @@
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.app-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 20px;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.header {
   text-align: center;
+  color: white;
+  margin-bottom: 30px;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+.header h1 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin-bottom: 8px;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
+.subtitle {
+  font-size: 1.1rem;
+  opacity: 0.9;
+}
+
+.main-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 30px;
+}
+
+@media (max-width: 968px) {
+  .main-content {
+    grid-template-columns: 1fr;
   }
+}
+
+/* Camera Section */
+.camera-container {
+  position: relative;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  background: #000;
+}
+
+.webcam-view {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+}
+
+.overlay.scanning {
+  background: rgba(102, 126, 234, 0.2);
+  animation: pulse 2s infinite;
+}
+
+.overlay.capturing {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.blink-prompt {
+  text-align: center;
+  color: white;
+  padding: 20px;
+}
+
+.blink-icon {
+  animation: blink-animation 1.5s infinite;
+}
+
+@keyframes blink-animation {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.blink-prompt p {
+  font-size: 1.3rem;
+  margin: 15px 0;
+  font-weight: 600;
+}
+
+.progress-bar {
+  width: 300px;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  overflow: hidden;
+  margin: 20px auto;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #667eea, #764ba2);
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin-top: 10px;
+}
+
+/* Status Panel */
+.status-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.status-card {
+  background: white;
+  border-radius: 16px;
+  padding: 30px;
+  text-align: center;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+}
+
+.status-card.idle {
+  border-left: 5px solid #6c757d;
+}
+
+.status-card.capturing {
+  border-left: 5px solid #ffc107;
+  background: #fffbf0;
+}
+
+.status-card.checking {
+  border-left: 5px solid #007bff;
+  background: #f0f8ff;
+}
+
+.status-card.success {
+  border-left: 5px solid #28a745;
+  background: #f0fff4;
+}
+
+.status-card.rejected,
+.status-card.error {
+  border-left: 5px solid #dc3545;
+  background: #fff5f5;
+}
+
+.status-card svg {
+  margin-bottom: 15px;
+  color: inherit;
+}
+
+.status-card.idle svg {
+  color: #6c757d;
+}
+.status-card.capturing svg {
+  color: #ffc107;
+}
+.status-card.checking svg {
+  color: #007bff;
+}
+.status-card.success svg {
+  color: #28a745;
+}
+.status-card.rejected svg,
+.status-card.error svg {
+  color: #dc3545;
+}
+
+.status-card h2 {
+  font-size: 1.5rem;
+  margin-bottom: 15px;
+  color: #333;
+}
+
+.details {
+  margin-top: 20px;
+  text-align: left;
+  background: rgba(0, 0, 0, 0.03);
+  padding: 15px;
+  border-radius: 8px;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.detail-row:last-child {
+  border-bottom: none;
+}
+
+.detail-row .label {
+  font-weight: 600;
+  color: #555;
+}
+
+.detail-row .value {
+  color: #333;
+  font-weight: 500;
+}
+
+.debug-info {
+  margin-top: 15px;
+  font-size: 0.85rem;
+}
+
+.debug-info summary {
+  cursor: pointer;
+  color: #667eea;
+  font-weight: 600;
+}
+
+.debug-info pre {
+  background: #f5f5f5;
+  padding: 10px;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin-top: 10px;
+  font-size: 0.75rem;
+}
+
+/* Controls */
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.verify-btn {
+  padding: 16px 24px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.verify-btn.primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+}
+
+.verify-btn.primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+}
+
+.verify-btn.secondary {
+  background: white;
+  color: #667eea;
+  border: 2px solid #667eea;
+}
+
+.verify-btn.secondary:hover:not(:disabled) {
+  background: #667eea;
+  color: white;
+}
+
+.verify-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-spinner {
+  width: 20px;
+  height: 20px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.location-status {
+  background: white;
+  padding: 12px 16px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: #555;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.location-status svg {
+  color: #667eea;
+}
+
+/* Gates Indicator */
+.gates-indicator {
+  max-width: 1200px;
+  margin: 30px auto 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 15px;
+}
+
+.gate {
+  background: white;
+  padding: 20px;
+  border-radius: 12px;
+  text-align: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+  border: 3px solid #e0e0e0;
+}
+
+.gate.passed {
+  background: linear-gradient(135deg, #d4fc79 0%, #96e6a1 100%);
+  border-color: #28a745;
+  transform: scale(1.05);
+}
+
+.gate.failed {
+  background: linear-gradient(135deg, #fc7979 0%, #e66a96 100%);
+  border-color: #dc3545;
+}
+
+.gate-number {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #667eea;
+  margin-bottom: 8px;
+}
+
+.gate.passed .gate-number {
+  color: #28a745;
+}
+
+.gate.failed .gate-number {
+  color: #dc3545;
+}
+
+.gate-name {
+  font-weight: 600;
+  font-size: 1.1rem;
+  margin-bottom: 8px;
+  color: #333;
+}
+
+.gate-icon {
+  font-size: 2rem;
+}
+
+/* Instructions */
+.instructions {
+  max-width: 1200px;
+  margin: 30px auto;
+  background: white;
+  padding: 25px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.instructions h3 {
+  color: #667eea;
+  margin-bottom: 15px;
+  font-size: 1.3rem;
+}
+
+.instructions ol {
+  padding-left: 20px;
+}
+
+.instructions li {
+  margin-bottom: 10px;
+  line-height: 1.6;
+  color: #555;
+}
+
+/* Animations */
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@keyframes spin {
   to {
     transform: rotate(360deg);
   }
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 5px solid rgba(102, 126, 234, 0.2);
+  border-top-color: #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto;
+}
+
+.pulse {
+  animation: pulse-scale 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-scale {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.8;
   }
 }
 
-.card {
-  padding: 2em;
-}
+/* Responsive */
+@media (max-width: 768px) {
+  .header h1 {
+    font-size: 1.8rem;
+  }
 
-.read-the-docs {
-  color: #888;
+  .gates-indicator {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .gate {
+    padding: 15px;
+  }
+
+  .gate-number {
+    font-size: 1.2rem;
+  }
+
+  .gate-name {
+    font-size: 0.9rem;
+  }
 }
