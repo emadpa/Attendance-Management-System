@@ -92,8 +92,11 @@ if __name__ == "__main__":
     # You can add multiple images per user for better accuracy
     
     users_to_register = {
-        "test_user_001": [
+       "test_user_001": [
             "test_images/imad_1.png",
+        ],
+        "test_user_002": [
+            "test_images/whatsapp.jpeg", "test_images/passportt1.png"
         ],
         
     }

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import Webcam from "react-webcam";
+import { motion, AnimatePresence } from "framer-motion";
 import { verifyAttendance } from "./api";
 import {
   Camera,
@@ -8,6 +9,8 @@ import {
   AlertTriangle,
   ShieldCheck,
   Eye,
+  Scan,
+  RefreshCw,
 } from "lucide-react";
 import "./App.css";
 
@@ -38,7 +41,7 @@ const App = () => {
           console.error("Error getting location:", error);
           setMessage("Location access denied. Cannot verify.");
           setStatus("rejected");
-        },
+        }
       );
     } else {
       setMessage("Geolocation is not supported by this browser.");
@@ -46,31 +49,20 @@ const App = () => {
     }
   }, []);
 
-  /**
-   * Capture multiple frames over 3 seconds for blink detection
-   */
   const captureBlinkSequence = useCallback(async () => {
     if (!webcamRef.current) return null;
 
     const frames = [];
-    const totalFrames = 10; // Capture 10 frames over 3 seconds
-    const interval = 300; // 300ms between frames (10 frames * 300ms = 3 seconds)
+    const totalFrames = 10;
+    const interval = 300;
 
     setCapturingFrames(true);
     setBlinkPrompt("Look at the camera and blink naturally...");
 
     for (let i = 0; i < totalFrames; i++) {
-      // Update progress
       setCaptureProgress(((i + 1) / totalFrames) * 100);
-
-      // Capture frame
       const imageSrc = webcamRef.current.getScreenshot();
-
-      if (imageSrc) {
-        frames.push(imageSrc);
-      }
-
-      // Wait before next capture (except on last frame)
+      if (imageSrc) frames.push(imageSrc);
       if (i < totalFrames - 1) {
         await new Promise((resolve) => setTimeout(resolve, interval));
       }
@@ -83,9 +75,6 @@ const App = () => {
     return frames;
   }, []);
 
-  /**
-   * Main verification function with blink challenge
-   */
   const captureAndVerify = useCallback(async () => {
     if (!webcamRef.current || !location) {
       setMessage("Camera or location not ready");
@@ -98,7 +87,6 @@ const App = () => {
     setGatePassed(0);
 
     try {
-      // Step 1: Capture sequence of frames for blink detection
       setMessage("Capturing frames for blink detection...");
       const blinkFrames = await captureBlinkSequence();
 
@@ -109,17 +97,15 @@ const App = () => {
         return;
       }
 
-      // Step 2: Send to backend for verification
       setStatus("checking");
       setMessage("Verifying attendance...");
-      console.log(blinkFrames);
 
       const payload = {
-        user_id: "test_user_001", // In production, get from authentication
+        user_id: "test_user_002",
         latitude: location.latitude,
         longitude: location.longitude,
-        frame: blinkFrames[blinkFrames.length - 1], // Latest frame for face recognition
-        blink_challenge_frames: blinkFrames, // All frames for blink detection
+        frame: blinkFrames[blinkFrames.length - 1],
+        blink_challenge_frames: blinkFrames,
         challenge_duration: 3.0,
         timestamp: new Date().toISOString(),
       };
@@ -130,45 +116,27 @@ const App = () => {
 
       if (result.verified) {
         setStatus("success");
-        setMessage("✓ Verification Successful! Attendance Marked.");
+        setMessage(`Welcome ${payload.user_id}`);
       } else {
         setStatus("rejected");
-
-        // Custom messages based on gate failure
         switch (result.gate_passed) {
-          case 0:
-            setMessage(`❌ Location Check Failed: ${result.rejection_reason}`);
-            break;
-          case 1:
-            setMessage(`❌ Anti-Spoofing Failed: ${result.rejection_reason}`);
-            break;
-          case 2:
-            setMessage(`❌ Liveness Check Failed: ${result.rejection_reason}`);
-            break;
-          case 3:
-            setMessage(
-              `❌ Face Recognition Failed: ${result.rejection_reason}`,
-            );
-            break;
-          default:
-            setMessage(`❌ Verification Failed: ${result.rejection_reason}`);
+          case 0: setMessage(`❌ Location Check Failed: ${result.rejection_reason}`); break;
+          case 1: setMessage(`❌ Anti-Spoofing Failed: ${result.rejection_reason}`); break;
+          case 2: setMessage(`❌ Liveness Check Failed: ${result.rejection_reason}`); break;
+          case 3: setMessage(`❌ Face Recognition Failed: ${result.rejection_reason}`); break;
+          default: setMessage(`❌ Verification Failed: ${result.rejection_reason}`);
         }
       }
     } catch (error) {
       console.error("Verification error:", error);
       setStatus("error");
-      setMessage(
-        "❌ System Error: " + (error.message || "Server may be offline"),
-      );
+      setMessage("❌ System Error: " + (error.message || "Server may be offline"));
       setDetails(null);
     } finally {
       setVerifying(false);
     }
   }, [location, captureBlinkSequence]);
 
-  /**
-   * Alternative: Single-frame streaming mode (for real-time feedback)
-   */
   const streamingVerification = useCallback(async () => {
     if (!webcamRef.current || !location) return;
 
@@ -176,13 +144,12 @@ const App = () => {
     setStatus("checking");
     setMessage("Starting liveness challenge...");
 
-    const maxAttempts = 30; // 30 frames max (~3 seconds at 10fps)
+    const maxAttempts = 30;
     let attempt = 0;
     let verified = false;
 
     const interval = setInterval(async () => {
       attempt++;
-
       const imageSrc = webcamRef.current.getScreenshot();
       if (!imageSrc) return;
 
@@ -200,22 +167,16 @@ const App = () => {
         setGatePassed(result.gate_passed);
 
         if (result.verified) {
-          // Success!
           verified = true;
           setStatus("success");
           setMessage("✓ Verification Successful!");
           setDetails(result);
           clearInterval(interval);
           setVerifying(false);
-        } else if (
-          result.gate_passed === 2 &&
-          result.rejection_reason?.includes("in progress")
-        ) {
-          // Still waiting for blink
+        } else if (result.gate_passed === 2 && result.rejection_reason?.includes("in progress")) {
           setMessage(result.rejection_reason);
           setDetails(result);
         } else {
-          // Failed verification
           setStatus("rejected");
           setMessage(result.rejection_reason);
           setDetails(result);
@@ -230,184 +191,231 @@ const App = () => {
         setVerifying(false);
       }
 
-      // Timeout after max attempts
       if (attempt >= maxAttempts && !verified) {
         setStatus("rejected");
         setMessage("Verification timeout - please try again");
         clearInterval(interval);
         setVerifying(false);
       }
-    }, 300); // Send frame every 300ms
+    }, 300);
   }, [location]);
 
+  // Framer Motion Variants
+  const containerVariants = {
+    initial: { opacity: 0, y: 20 },
+    animate: { opacity: 1, y: 0, transition: { duration: 0.8, ease: "easeOut" } }
+  };
+
+  const scannerVariants = {
+    idle: { scale: 1, borderColor: "rgba(229, 231, 235, 1)" },
+    checking: { scale: 1, borderColor: "var(--color-primary)" },
+    success: {
+      scale: 1.05,
+      borderColor: "var(--color-success)",
+      transition: { type: "spring", stiffness: 300, damping: 10 }
+    },
+    rejected: {
+      x: [-5, 5, -5, 5, 0],
+      borderColor: "var(--color-danger)",
+      transition: { duration: 0.4 }
+    }
+  };
+
   return (
-    <div className="app-container">
+    <motion.div
+      className="app-container"
+      variants={containerVariants}
+      initial="initial"
+      animate="animate"
+    >
       <header className="header">
-        <h1>
-          <ShieldCheck size={28} /> SecureGate Attendance
-        </h1>
+        <motion.h1
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.5 }}
+        >
+          <ShieldCheck size={40} className="text-primary" />
+          <span className="brand">SecureGate</span>
+        </motion.h1>
         <p className="subtitle">4-Gate Security Verification System</p>
       </header>
 
       <main className="main-content">
-        <div className="camera-container">
-          <Webcam
-            audio={false}
-            ref={webcamRef}
-            screenshotFormat="image/jpeg"
-            className="webcam-view"
-            videoConstraints={{
-              width: 640,
-              height: 480,
-              facingMode: "user",
-            }}
-          />
+        <div className="camera-wrapper">
+          <motion.div
+            className={`camera-container ${status === "checking" ? "searching" : status}`}
+            variants={scannerVariants}
+            animate={status}
+          >
+            <Webcam
+              audio={false}
+              ref={webcamRef}
+              screenshotFormat="image/jpeg"
+              className="webcam-view"
+              videoConstraints={{
+                width: 640,
+                height: 480,
+                facingMode: "user",
+              }}
+            />
 
-          {/* Overlays */}
-          {status === "checking" && <div className="overlay scanning"></div>}
-          {capturingFrames && (
-            <div className="overlay capturing">
-              <div className="blink-prompt">
-                <Eye size={48} className="blink-icon" />
-                <p>{blinkPrompt}</p>
-                <div className="progress-bar">
-                  <div
-                    className="progress-fill"
-                    style={{ width: `${captureProgress}%` }}
-                  ></div>
+            {/* Scanning Overlay Pulse */}
+            <AnimatePresence>
+              {(status === "checking" || status === "capturing") && (
+                <motion.div
+                  className="absolute inset-0 z-10 pointer-events-none"
+                  style={{
+                    border: "2px solid var(--color-primary)",
+                    borderRadius: "50%"
+                  }}
+                  animate={{ opacity: [0.3, 0.6, 0.3] }}
+                  transition={{ repeat: Infinity, duration: 2 }}
+                />
+              )}
+            </AnimatePresence>
+
+            {/* Blinking/Progress Overlay */}
+            {capturingFrames && (
+              <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+                <div className="text-center text-white">
+                  <Eye size={48} className="mx-auto mb-4 animate-pulse" />
+                  <p className="font-mono text-sm tracking-widest uppercase mb-2">
+                    SCANNING_SEQUENCE: {Math.round(captureProgress)}%
+                  </p>
+                  <div className="w-48 h-1 bg-white/20 mx-auto overflow-hidden">
+                    <motion.div
+                      className="h-full bg-white"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${captureProgress}%` }}
+                    />
+                  </div>
                 </div>
-                <p className="progress-text">{Math.round(captureProgress)}%</p>
               </div>
-            </div>
-          )}
+            )}
+          </motion.div>
         </div>
 
-        <div className="status-panel">
-          <div className={`status-card ${status}`}>
-            {status === "idle" && <Camera size={48} />}
-            {status === "capturing" && <Eye size={48} className="pulse" />}
-            {status === "checking" && <div className="spinner"></div>}
-            {status === "success" && <UserCheck size={48} />}
-            {status === "rejected" && <AlertTriangle size={48} />}
+        <motion.div
+          className="status-panel"
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.2 }}
+        >
+          <div className="status-card">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={status}
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                className="flex flex-col items-center gap-4"
+              >
+                {status === "idle" && <Camera size={48} className="opacity-20" />}
+                {status === "capturing" && <Scan size={48} className="text-primary animate-pulse" />}
+                {status === "checking" && <RefreshCw size={48} className="text-primary animate-spin" />}
+                {status === "success" && <UserCheck size={48} className="text-success" />}
+                {status === "rejected" && <AlertTriangle size={48} className="text-danger" />}
 
-            <h2>{message}</h2>
+                <h2 className="text-center">{message}</h2>
+              </motion.div>
+            </AnimatePresence>
 
             {details && (
-              <div className="details">
+              <motion.div
+                className="details mt-6"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+              >
                 <div className="detail-row">
-                  <span className="label">Gate Progress:</span>
-                  <span className="value">{details.gate_passed}/4</span>
+                  <span className="label">Gate Progress</span>
+                  <span className="value mono">{details.gate_passed}/4</span>
                 </div>
                 {details.confidence !== undefined && (
                   <div className="detail-row">
-                    <span className="label">Confidence:</span>
-                    <span className="value">
-                      {(details.confidence * 100).toFixed(1)}%
-                    </span>
+                    <span className="label">Confidence Score</span>
+                    <span className="value mono">{(details.confidence * 100).toFixed(1)}%</span>
                   </div>
                 )}
-                <div className="detail-row">
-                  <span className="label">Processing Time:</span>
-                  <span className="value">
-                    {(details.processing_time * 1000).toFixed(0)}ms
-                  </span>
-                </div>
-
-                {/* Debug info if available */}
-                {details.debug_info && (
-                  <details className="debug-info">
-                    <summary>Debug Information</summary>
-                    <pre>{JSON.stringify(details.debug_info, null, 2)}</pre>
-                  </details>
+                {details.processing_time && (
+                  <div className="detail-row">
+                    <span className="label">System Latency</span>
+                    <span className="value mono">{(details.processing_time * 1000).toFixed(0)}ms</span>
+                  </div>
                 )}
-              </div>
+              </motion.div>
             )}
           </div>
 
           <div className="controls">
-            <button
+            <motion.button
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.99 }}
               onClick={captureAndVerify}
               disabled={verifying || !location}
               className="verify-btn primary"
             >
-              {verifying ? (
-                <>
-                  <div className="btn-spinner"></div>
-                  Verifying...
-                </>
-              ) : (
-                <>
-                  <UserCheck size={20} />
-                  Verify Attendance (Batch Mode)
-                </>
-              )}
-            </button>
+              {verifying ? "Verifying..." : "Full Verification"}
+            </motion.button>
 
-            {/* Alternative streaming mode button */}
-            <button
+            <motion.button
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.99 }}
               onClick={streamingVerification}
               disabled={verifying || !location}
               className="verify-btn secondary"
             >
-              {verifying ? "Processing..." : "Verify (Streaming Mode)"}
-            </button>
-
-            <div className="location-status">
-              <MapPin size={16} />
-              <span>
-                {location
-                  ? `${location.latitude.toFixed(4)}°N, ${location.longitude.toFixed(4)}°E`
-                  : "Acquiring location..."}
-              </span>
-            </div>
+              Stream Check
+            </motion.button>
           </div>
-        </div>
+
+          <div className="mt-8 flex items-center justify-center gap-2 opacity-40 font-mono text-xs">
+            <MapPin size={12} />
+            <span>
+              {location
+                ? `${location.latitude.toFixed(4)}°N, ${location.longitude.toFixed(4)}°E`
+                : "PENDING_GEO_LOC"}
+            </span>
+          </div>
+        </motion.div>
       </main>
 
-      {/* Visual Gate Indicators */}
       <div className="gates-indicator">
-        <div
-          className={`gate ${gatePassed >= 1 ? "passed" : gatePassed === 0 ? "failed" : ""}`}
-        >
-          <div className="gate-number">1</div>
-          <div className="gate-name">Location</div>
-          <div className="gate-icon">📍</div>
-        </div>
-        <div
-          className={`gate ${gatePassed >= 2 ? "passed" : gatePassed === 1 ? "failed" : ""}`}
-        >
-          <div className="gate-number">2</div>
-          <div className="gate-name">Texture</div>
-          <div className="gate-icon">🔍</div>
-        </div>
-        <div
-          className={`gate ${gatePassed >= 3 ? "passed" : gatePassed === 2 ? "failed" : ""}`}
-        >
-          <div className="gate-number">3</div>
-          <div className="gate-name">Liveness</div>
-          <div className="gate-icon">👁️</div>
-        </div>
-        <div
-          className={`gate ${gatePassed >= 4 ? "passed" : gatePassed === 3 ? "failed" : ""}`}
-        >
-          <div className="gate-number">4</div>
-          <div className="gate-name">Identity</div>
-          <div className="gate-icon">✓</div>
-        </div>
+        {[
+          { id: 1, name: "Location", icon: "📍" },
+          { id: 2, name: "Anti-Spoof", icon: "🔍" },
+          { id: 3, name: "Liveness", icon: "👁️" },
+          { id: 4, name: "Identity", icon: "✓" },
+        ].map((gate) => (
+          <motion.div
+            key={gate.id}
+            className={`gate ${gatePassed >= gate.id ? "passed" : ""}`}
+            initial={false}
+            animate={{
+              backgroundColor: gatePassed >= gate.id ? "var(--color-success)" : "transparent",
+              transition: { duration: 0.5 }
+            }}
+          >
+            <div className="gate-number">STEP_0{gate.id}</div>
+            <div className="gate-name">{gate.name}</div>
+          </motion.div>
+        ))}
       </div>
 
-      {/* Instructions */}
-      <div className="instructions">
-        <h3>How to Use:</h3>
+      <motion.footer
+        className="instructions"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 1 }}
+      >
+        <h3>Protocol:</h3>
         <ol>
-          <li>Ensure you are at the correct location (within 4km radius)</li>
-          <li>Position your face clearly in the camera frame</li>
-          <li>Click "Verify Attendance" and wait for the blink prompt</li>
-          <li>Blink naturally when prompted (within 3 seconds)</li>
-          <li>Wait for verification to complete</li>
+          <li>Acquire high-precision geolocation.</li>
+          <li>Position biometric features within frame.</li>
+          <li>Execute blink sequence on prompt.</li>
+          <li>Await system verification result.</li>
         </ol>
-      </div>
-    </div>
+      </motion.footer>
+    </motion.div>
   );
 };
 

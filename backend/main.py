@@ -6,6 +6,7 @@ from datetime import datetime
 import numpy as np
 import json
 from pathlib import Path
+from fastapi.middleware.cors import CORSMiddleware
 
 from .models import AttendanceRequest, AttendanceResponse
 from .core.utils import decode_image
