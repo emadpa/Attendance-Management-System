@@ -1,48 +1,119 @@
-import React from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import React from "react";
+import { Plus, Trash2, Bell, Check } from "lucide-react";
 
-export default function NotificationCard({ notifications, onAdd, onDelete }) {
-    return (
-        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 sm:p-6 transition-colors duration-300">
-            <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest font-sans">
-                    Notifications
-                </h3>
-                <button
-                    onClick={onAdd}
-                    className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors group"
-                    aria-label="Add notification"
-                >
-                    <Plus className="w-4 h-4 text-gray-400 group-hover:text-black dark:group-hover:text-white" />
-                </button>
-            </div>
+export default function NotificationCard({
+  notifications,
+  onAdd,
+  onDelete,
+  onMarkAsRead,
+  onMarkAllAsRead, // ✅ New prop to clear everything
+}) {
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
 
-            <div className="space-y-5">
-                {notifications.map((note) => (
-                    <div key={note.id} className="flex gap-3 items-start group cursor-pointer">
-                        <div className={`w-1.5 h-1.5 rounded-full mt-2 flex-shrink-0 group-hover:scale-125 transition-transform
-              ${note.type === 'success' ? 'bg-green-500' :
-                                note.type === 'warning' ? 'bg-yellow-500' :
-                                    note.type === 'danger' ? 'bg-red-500' : 'bg-blue-500'}
-            `}></div>
-                        <div className="flex-1">
-                            <p className="text-sm text-gray-900 dark:text-gray-100 mb-1 font-sans group-hover:text-black dark:group-hover:text-white transition-colors">
-                                {note.text}
-                            </p>
-                            <p className="text-xs text-gray-400 font-mono">
-                                {note.time}
-                            </p>
-                        </div>
-                        <button
-                            onClick={() => onDelete(note.id)}
-                            className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-all"
-                            aria-label="Delete notification"
-                        >
-                            <Trash2 className="w-4 h-4 text-red-500" />
-                        </button>
-                    </div>
-                ))}
-            </div>
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden font-sans">
+      {/* Header */}
+      <div className="p-5 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 flex justify-between items-center">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Bell className="w-5 h-5 text-gray-400" />
+            <h2 className="text-lg font-medium text-gray-900 dark:text-white">
+              Notifications
+            </h2>
+          </div>
+          {unreadCount > 0 && (
+            <span className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-xs font-bold px-2 py-0.5 rounded-full">
+              {unreadCount} New
+            </span>
+          )}
         </div>
-    );
+
+        <div className="flex items-center gap-3">
+          {/* ✅ Explicit "Mark all as read" button */}
+          {unreadCount > 0 && (
+            <button
+              onClick={onMarkAllAsRead}
+              className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium"
+            >
+              Mark all as read
+            </button>
+          )}
+          <button
+            onClick={onAdd}
+            className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md transition-colors text-gray-500 dark:text-gray-400"
+            title="Simulate new notification"
+          >
+            <Plus className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* List */}
+      <div className="max-h-[400px] overflow-y-auto">
+        {notifications.length === 0 ? (
+          <div className="p-8 text-center text-sm text-gray-500 dark:text-gray-400">
+            No notifications at the moment.
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-100 dark:divide-gray-700">
+            {notifications.map((notif) => (
+              <div
+                key={notif.id}
+                className={`group p-4 flex items-start justify-between gap-3 transition-colors ${
+                  !notif.isRead
+                    ? "bg-blue-50/40 dark:bg-blue-900/10"
+                    : "bg-white dark:bg-gray-800"
+                }`}
+              >
+                {/* Left side: Dot + Content */}
+                <div className="flex items-start gap-3">
+                  <div className="mt-1.5 w-2 shrink-0 flex justify-center">
+                    {!notif.isRead && (
+                      <div className="w-2 h-2 rounded-full bg-blue-500" />
+                    )}
+                  </div>
+
+                  <div>
+                    <p
+                      className={`text-sm ${
+                        !notif.isRead
+                          ? "font-medium text-black dark:text-white"
+                          : "text-gray-600 dark:text-gray-300"
+                      }`}
+                    >
+                      {notif.text}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">{notif.time}</p>
+                  </div>
+                </div>
+
+                {/* Right side: Explicit Action Buttons */}
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                  {/* ✅ Explicit Mark as Read Button */}
+                  {!notif.isRead && (
+                    <button
+                      onClick={() => onMarkAsRead(notif.id)}
+                      title="Mark as read"
+                      className="p-1.5 text-blue-500 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors"
+                    >
+                      <Check className="w-4 h-4" />
+                    </button>
+                  )}
+
+                  {/* Delete Button */}
+                  <button
+                    onClick={() => onDelete(notif.id)}
+                    title="Delete notification"
+                    className="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }

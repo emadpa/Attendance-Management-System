@@ -1,0 +1,328 @@
+
+
+generator client {
+  provider = "prisma-client-js"
+  
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// --- ENUMS ---
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  HALF_DAY
+  ON_LEAVE
+  MISSED_PUNCH
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  HR_MANAGER
+  IT_ADMIN
+  EMPLOYEE
+}
+
+// ✅ NEW: Defines where the notification is being sent
+enum NotificationTarget {
+  ALL
+  DEPARTMENT
+  INDIVIDUAL
+}
+
+// ✅ NEW: Defines the working status for a specific day
+enum WorkType {
+  OFFICE
+  WFH
+  OFF
+}
+
+// --- MODELS ---
+
+model Organization {
+  id                    String   @id @default(uuid())
+  name                  String
+  contactEmail          String   @unique
+  phone                 String?
+  address               String?
+
+  latitude              Float?
+  longitude             Float?
+  allowedRadiusInMeters Int      @default(100)
+
+  timeZone              String   @default("Asia/Kolkata")
+  requireBiometrics     Boolean  @default(true)
+  strictGeofence        Boolean  @default(true)
+
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // Relationships
+  users                 User[]
+  departments           Department[]
+  shifts                Shift[]
+  notifications         Notification[]
+  schedules             Schedule[]
+  attendances           Attendance[]
+  leaveRequests         LeaveRequest[]
+  leaveTypes            LeaveType[]
+}
+
+model User {
+  id                    String   @id @default(uuid())
+  organizationId        String
+  empId                 String
+  name                  String
+  email                 String   @unique
+  password              String
+  role                  Role     @default(EMPLOYEE)
+  
+  departmentId          String
+  designation           String
+  
+ 
+  dateOfJoining         DateTime @default(now())
+
+  faceEmbedding         Float[]
+  isBiometricRegistered Boolean  @default(false)
+
+  // Default shift (e.g., standard 9-5)
+  shiftId               String?
+
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // Relationships
+  organization          Organization            @relation(fields: [organizationId], references: [id])
+  department            Department              @relation(fields: [departmentId], references: [id])
+  shift                 Shift?                  @relation(fields: [shiftId], references: [id])
+  leaveBalances         LeaveBalance[] 
+  // The attendance/leaves they generated
+  attendances           Attendance[]   @relation("UserAttendance")
+  leaveRequests         LeaveRequest[] @relation("UserLeaves")
+  
+  // The attendance/leaves they managed (for HR/Admins)
+  modifiedAttendances   Attendance[]   @relation("ModifiedAttendance")
+  reviewedLeaves        LeaveRequest[] @relation("ReviewedLeaves")
+  
+  // ✅ NEW: Relationships for Scheduling and Notifications
+  schedules             Schedule[]
+  sentNotifications     Notification[]          @relation("SentNotifications")
+  receivedNotifications NotificationRecipient[]
+
+  @@unique([organizationId, empId])
+}
+
+// =====================================================================
+// SUPPORTING MODELS
+// =====================================================================
+
+model Department {
+  id             String       @id @default(uuid())
+  name           String
+  organizationId String
+  
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  users          User[]
+}
+
+model Shift {
+  id             String       @id @default(uuid())
+  name           String
+  startTime      String       @default("09:00")
+  endTime        String       @default("17:00")
+  organizationId String
+  
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  users          User[]
+  attendances           Attendance[]
+}
+
+model LeaveType {
+  id             String         @id @default(uuid())
+  name           String         
+  defaultAllowed Int
+  organizationId String         // ✅ Add this
+  
+  // Relations
+  organization   Organization   @relation(fields: [organizationId], references: [id]) // ✅ Add this
+  leaveBalances  LeaveBalance[]
+  leaveRequests  LeaveRequest[]
+
+  // Ensure a company can't create two "Sick Leave" types
+  @@unique([organizationId, name])
+}
+
+model LeaveBalance {
+  id          String    @id @default(uuid())
+  userId      String
+  leaveTypeId String
+  used        Int       @default(0)
+  allowed     Int
+
+  user        User      @relation(fields: [userId], references: [id])
+  leaveType   LeaveType @relation(fields: [leaveTypeId], references: [id])
+
+  @@unique([userId, leaveTypeId])
+}
+
+// =====================================================================
+// ✅ NEW: SCHEDULING MODELS
+// =====================================================================
+
+model Schedule {
+  id             String       @id @default(uuid())
+  organizationId String
+  userId         String
+  
+  date           DateTime     @db.Date // The specific day being scheduled
+  workType       WorkType     @default(OFFICE)
+  
+  // These override the default Shift if provided
+  startTime      String?      // e.g., "10:00"
+  endTime        String?      // e.g., "14:00"
+  tasks          Json?        // e.g., [{ time: "10:00", title: "Meeting" }]
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  user           User         @relation(fields: [userId], references: [id])
+
+  // A user can only have one specific schedule entry per day
+  @@unique([userId, date])
+}
+
+// =====================================================================
+// ✅ NEW: NOTIFICATION MODELS
+// =====================================================================
+
+model Notification {
+  id             String             @id @default(uuid())
+  organizationId String
+  senderId       String             // The Admin who created it
+  
+  title          String
+  message        String
+  
+  targetType     NotificationTarget
+  targetId       String?            // Can hold departmentId, userId, or be null if targeting ALL
+  
+  createdAt      DateTime           @default(now())
+
+  // Relations
+  organization   Organization       @relation(fields: [organizationId], references: [id])
+  sender         User               @relation("SentNotifications", fields: [senderId], references: [id])
+  recipients     NotificationRecipient[]
+}
+
+// Tracks the "Read/Unread" status for each individual employee
+model NotificationRecipient {
+  id             String       @id @default(uuid())
+  notificationId String
+  userId         String
+  
+  isRead         Boolean      @default(false)
+  readAt         DateTime?
+
+  // Relations
+  notification   Notification @relation(fields: [notificationId], references: [id])
+  user           User         @relation(fields: [userId], references: [id])
+
+  @@unique([notificationId, userId])
+}
+
+
+// =====================================================================
+// ATTENDANCE & LEAVE MODELS
+// =====================================================================
+
+model Attendance {
+  id                    String   @id @default(uuid())
+  userId                String
+  organizationId        String
+  
+  date                  DateTime @db.Date // Ensures it only stores the YYYY-MM-DD
+  shiftId               String?
+
+  // --- Time Logs ---
+  punchIn               DateTime?
+  punchOut              DateTime?
+  
+  // --- Status & Calculations ---
+  status                AttendanceStatus @default(ABSENT)
+  lateDuration          Int              @default(0) // Minutes
+  overtimeDuration      Int              @default(0) // Minutes
+
+  // --- 🚨 BIOMETRIC PROOF ---
+  punchInImage          String?
+  punchOutImage         String?
+  faceMatchScore        Float?   // e.g., 0.98
+  livenessScore         Float?   // e.g., 0.99
+  isLivenessVerified    Boolean  @default(false)
+  spoofAttemptDetected  Boolean  @default(false)
+
+  // --- Location & Device Security ---
+  latitude              Float?
+  longitude             Float?
+  address               String?
+  isGeofenceValid       Boolean  @default(true)
+  
+  userAgent             String?
+  ipAddress             String?
+  deviceId              String?
+
+  // --- Manual Override ---
+  isManualEntry         Boolean  @default(false)
+  manualEntryReason     String?
+  modifiedById          String?
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // --- Relations ---
+  user                  User         @relation("UserAttendance", fields: [userId], references: [id])
+  organization          Organization @relation(fields: [organizationId], references: [id])
+  shift                 Shift?       @relation(fields: [shiftId], references: [id])
+  modifiedBy            User?        @relation("ModifiedAttendance", fields: [modifiedById], references: [id])
+
+  // Prevent duplicate attendance records for same user on same day
+  @@unique([userId, date])
+}
+
+model LeaveRequest {
+  id                    String      @id @default(uuid())
+  userId                String
+  organizationId        String
+  leaveTypeId           String
+
+  startDate             DateTime    @db.Date
+  endDate               DateTime    @db.Date
+  reason                String
+  status                LeaveStatus @default(PENDING)
+
+  // --- Review/Approval Tracking ---
+  reviewedById          String?
+  reviewedAt            DateTime?
+  reviewerNotes         String?
+
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  // --- Relations ---
+  user                  User         @relation("UserLeaves", fields: [userId], references: [id])
+  organization          Organization @relation(fields: [organizationId], references: [id])
+  leaveType             LeaveType    @relation(fields: [leaveTypeId], references: [id])
+  reviewedBy            User?        @relation("ReviewedLeaves", fields: [reviewedById], references: [id])
+}

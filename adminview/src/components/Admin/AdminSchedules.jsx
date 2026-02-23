@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { AdminLayout } from "./AdminLayout";
 import { Badge } from "../shared/Badge";
 import { Toast, useToast } from "../shared/Toast";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight, MapPin, X } from "lucide-react";
 
 export function AdminSchedules() {
@@ -16,19 +16,96 @@ export function AdminSchedules() {
 
     const [schedules, setSchedules] = useState({
         Engineering: [
-            { name: "John Doe", schedule: ["09:00 - 17:00", "09:00 - 17:00", "WFH", "09:00 - 17:00", "09:00 - 16:00", "Off", "Off"] },
-            { name: "Charlie Wilson", schedule: ["09:00 - 17:00", "09:00 - 17:00", "09:00 - 17:00", "WFH", "09:00 - 17:00", "Off", "Off"] },
-            { name: "Sarah Johnson", schedule: ["10:00 - 18:00", "10:00 - 18:00", "10:00 - 18:00", "10:00 - 18:00", "10:00 - 18:00", "Off", "Off"] },
+            {
+                name: "John Doe",
+                schedule: [
+                    { type: "work", label: "09:00 - 17:00", tasks: [] },
+                    { type: "work", label: "09:00 - 17:00", tasks: [] },
+                    { type: "wfh", label: "09:00 - 17:00", tasks: [] },
+                    { type: "work", label: "09:00 - 17:00", tasks: [{ id: 1, time: "10:00 - 11:00", title: "Client Meeting" }] },
+                    { type: "work", label: "09:00 - 16:00", tasks: [] },
+                    { type: "off", label: "Off", tasks: [] },
+                    { type: "off", label: "Off", tasks: [] }
+                ]
+            },
+            {
+                name: "Charlie Wilson",
+                schedule: [
+                    { type: "work", label: "09:00 - 17:00", tasks: [] },
+                    { type: "work", label: "09:00 - 17:00", tasks: [] },
+                    { type: "work", label: "09:00 - 17:00", tasks: [] },
+                    { type: "wfh", label: "09:00 - 17:00", tasks: [] },
+                    { type: "work", label: "09:00 - 17:00", tasks: [] },
+                    { type: "off", label: "Off", tasks: [] },
+                    { type: "off", label: "Off", tasks: [] }
+                ]
+            },
+            {
+                name: "Sarah Johnson",
+                schedule: [
+                    { type: "work", label: "10:00 - 18:00", tasks: [] },
+                    { type: "work", label: "10:00 - 18:00", tasks: [] },
+                    { type: "work", label: "10:00 - 18:00", tasks: [] },
+                    { type: "work", label: "10:00 - 18:00", tasks: [] },
+                    { type: "work", label: "10:00 - 18:00", tasks: [] },
+                    { type: "off", label: "Off", tasks: [] },
+                    { type: "off", label: "Off", tasks: [] }
+                ]
+            },
         ],
         Product: [
-            { name: "Jane Smith", schedule: ["WFH", "WFH", "09:00 - 17:00", "09:00 - 17:00", "09:00 - 17:00", "Off", "Off"] },
-            { name: "Mike Brown", schedule: ["09:00 - 17:00", "09:00 - 17:00", "09:00 - 17:00", "09:00 - 17:00", "09:00 - 17:00", "Off", "Off"] },
+            {
+                name: "Jane Smith",
+                schedule: [
+                    { type: "wfh", label: "09:00 - 17:00", tasks: [] },
+                    { type: "wfh", label: "09:00 - 17:00", tasks: [] },
+                    { type: "work", label: "09:00 - 17:00", tasks: [] },
+                    { type: "work", label: "09:00 - 17:00", tasks: [] },
+                    { type: "work", label: "09:00 - 17:00", tasks: [] },
+                    { type: "off", label: "Off", tasks: [] },
+                    { type: "off", label: "Off", tasks: [] }
+                ]
+            },
+            {
+                name: "Mike Brown",
+                schedule: [
+                    { type: "work", label: "09:00 - 17:00", tasks: [] },
+                    { type: "work", label: "09:00 - 17:00", tasks: [] },
+                    { type: "work", label: "09:00 - 17:00", tasks: [] },
+                    { type: "work", label: "09:00 - 17:00", tasks: [] },
+                    { type: "work", label: "09:00 - 17:00", tasks: [] },
+                    { type: "off", label: "Off", tasks: [] },
+                    { type: "off", label: "Off", tasks: [] }
+                ]
+            },
         ],
         Design: [
-            { name: "Bob Johnson", schedule: ["10:00 - 18:00", "10:00 - 18:00", "10:00 - 18:00", "10:00 - 18:00", "10:00 - 18:00", "Off", "Off"] },
+            {
+                name: "Bob Johnson",
+                schedule: [
+                    { type: "work", label: "10:00 - 18:00", tasks: [] },
+                    { type: "work", label: "10:00 - 18:00", tasks: [] },
+                    { type: "work", label: "10:00 - 18:00", tasks: [] },
+                    { type: "work", label: "10:00 - 18:00", tasks: [] },
+                    { type: "work", label: "10:00 - 18:00", tasks: [] },
+                    { type: "off", label: "Off", tasks: [] },
+                    { type: "off", label: "Off", tasks: [] }
+                ]
+            },
         ],
         People: [
-            { name: "Alice Brown", schedule: ["09:00 - 17:00", "09:00 - 17:00", "09:00 - 17:00", "09:00 - 17:00", "09:00 - 16:00", "Off", "Off"] },
+            {
+                name: "Alice Brown",
+                schedule: [
+                    { type: "work", label: "09:00 - 17:00", tasks: [] },
+                    { type: "work", label: "09:00 - 17:00", tasks: [] },
+                    { type: "work", label: "09:00 - 17:00", tasks: [] },
+                    { type: "work", label: "09:00 - 17:00", tasks: [] },
+                    { type: "work", label: "09:00 - 16:00", tasks: [] },
+                    { type: "off", label: "Off", tasks: [] },
+                    { type: "off", label: "Off", tasks: [] }
+                ]
+            },
         ],
     });
 
@@ -71,27 +148,20 @@ export function AdminSchedules() {
 
     // Update schedule cell
     const updateSchedule = (empIndex, dayIndex, value) => {
-        const updatedSchedules = { ...schedules };
-        updatedSchedules[selectedTeam][empIndex].schedule[dayIndex] = value;
-        setSchedules(updatedSchedules);
+        setSchedules(prev => ({
+            ...prev,
+            [selectedTeam]: prev[selectedTeam].map((emp, eIdx) =>
+                eIdx === empIndex
+                    ? {
+                        ...emp,
+                        schedule: emp.schedule.map((shift, dIdx) =>
+                            dIdx === dayIndex ? value : shift
+                        )
+                    }
+                    : emp
+            )
+        }));
         setHasUnsavedChanges(true);
-        setEditingCell(null);
-    };
-
-    // Cycle through shift types
-    const cycleShiftType = (empIndex, dayIndex) => {
-        const currentValue = schedules[selectedTeam][empIndex].schedule[dayIndex];
-        let nextValue;
-
-        if (currentValue === "Off") {
-            nextValue = "09:00 - 17:00";
-        } else if (currentValue === "WFH") {
-            nextValue = "Off";
-        } else {
-            nextValue = "WFH";
-        }
-
-        updateSchedule(empIndex, dayIndex, nextValue);
     };
 
     // Publish changes
@@ -200,45 +270,37 @@ export function AdminSchedules() {
                                     <td className="p-4 border-r border-gray-100 bg-white sticky left-0 z-10 font-serif font-medium shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] group-hover:bg-gray-50 transition-colors">
                                         {emp.name}
                                     </td>
-                                    {emp.schedule.map((shift, dayIdx) => (
+                                    {emp.schedule.map((shiftData, dayIdx) => (
                                         <td
                                             key={dayIdx}
-                                            onClick={() => cycleShiftType(empIdx, dayIdx)}
-                                            className="p-2 border-r border-gray-50 border-b border-gray-50 relative h-20 text-center align-middle hover:bg-gray-100 transition-colors cursor-pointer"
+                                            onClick={() => setEditingCell({ empIdx, dayIdx, data: shiftData })}
+                                            className="p-2 border-r border-gray-50 border-b border-gray-50 relative h-20 text-center align-middle hover:bg-gray-100 transition-colors cursor-pointer select-none"
                                         >
-                                            {editingCell?.empIdx === empIdx && editingCell?.dayIdx === dayIdx ? (
-                                                <div className="relative">
-                                                    <input
-                                                        type="text"
-                                                        value={shift}
-                                                        onChange={(e) => updateSchedule(empIdx, dayIdx, e.target.value)}
-                                                        onBlur={() => setEditingCell(null)}
-                                                        onKeyDown={(e) => {
-                                                            if (e.key === "Enter") setEditingCell(null);
-                                                            if (e.key === "Escape") setEditingCell(null);
-                                                        }}
-                                                        autoFocus
-                                                        className="w-full px-2 py-1 text-xs text-center border border-black rounded outline-none font-mono"
-                                                    />
-                                                </div>
-                                            ) : (
-                                                <>
-                                                    {shift !== "Off" ? (
+                                            <div className="flex flex-col items-center gap-1">
+                                                {shiftData.type !== "off" ? (
+                                                    <>
                                                         <div
-                                                            className={`text-xs inline-flex flex-col items-center gap-1 px-2 py-1.5 rounded border ${shift === "WFH"
+                                                            className={`text-xs inline-flex flex-col items-center gap-1 px-2 py-1.5 rounded border ${shiftData.type === "wfh"
                                                                 ? "bg-blue-50 text-blue-700 border-blue-100"
                                                                 : "bg-white text-gray-700 border-gray-200 shadow-sm"
                                                                 }`}
-                                                            onDoubleClick={() => setEditingCell({ empIdx, dayIdx })}
                                                         >
-                                                            <span className="font-mono">{shift}</span>
-                                                            {shift === "WFH" && <MapPin className="w-3 h-3" />}
+                                                            <span className="font-mono">{shiftData.label}</span>
+                                                            {shiftData.type === "wfh" && <MapPin className="w-3 h-3" />}
                                                         </div>
-                                                    ) : (
-                                                        <div className="text-gray-300 text-xs">-</div>
-                                                    )}
-                                                </>
-                                            )}
+                                                        {shiftData.tasks && shiftData.tasks.length > 0 && (
+                                                            <div className="flex gap-0.5">
+                                                                {shiftData.tasks.slice(0, 3).map((_, i) => (
+                                                                    <div key={i} className="w-1.5 h-1.5 rounded-full bg-black/20" />
+                                                                ))}
+                                                                {shiftData.tasks.length > 3 && <span className="text-[8px] text-gray-400">+</span>}
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                ) : (
+                                                    <div className="text-gray-300 text-xs font-mono">Off</div>
+                                                )}
+                                            </div>
                                         </td>
                                     ))}
                                 </tr>
@@ -249,9 +311,157 @@ export function AdminSchedules() {
 
                 {/* Instructions */}
                 <div className="p-4 bg-gray-50 border-t border-gray-200 text-xs text-gray-500">
-                    <p><strong>Tip:</strong> Click a cell to cycle through shift types (Office → WFH → Off). Double-click to edit time manually.</p>
+                    <p><strong>Tip:</strong> <span>Click any cell to manage shift details and add hourly tasks/meetings.</span></p>
                 </div>
             </div>
+
+            {/* Detail Modal */}
+            <AnimatePresence>
+                {editingCell && (
+                    <>
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 0.3 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setEditingCell(null)}
+                            className="fixed inset-0 bg-black z-40 backdrop-blur-sm"
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none p-4"
+                        >
+                            <div className="bg-white rounded-lg shadow-2xl p-6 w-full max-w-lg pointer-events-auto max-h-[90vh] overflow-y-auto">
+                                <div className="flex justify-between items-center mb-6">
+                                    <div>
+                                        <h3 className="text-lg font-serif font-medium">Manage Schedule</h3>
+                                        <p className="text-sm text-gray-500">{schedules[selectedTeam][editingCell.empIdx].name} • {days[editingCell.dayIdx]}</p>
+                                    </div>
+                                    <button onClick={() => setEditingCell(null)} className="p-2 hover:bg-gray-100 rounded-full">
+                                        <X className="w-5 h-5 text-gray-500" />
+                                    </button>
+                                </div>
+
+                                <div className="space-y-6">
+                                    {/* Main Shift */}
+                                    <div>
+                                        <label className="block text-xs font-medium uppercase tracking-wider text-gray-500 mb-2">Shift Status</label>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {["work", "wfh", "off"].map(type => (
+                                                <button
+                                                    key={type}
+                                                    onClick={() => {
+                                                        const defaultLabel = type === "off" ? "Off" : "09:00 - 17:00";
+                                                        const newVal = {
+                                                            ...schedules[selectedTeam][editingCell.empIdx].schedule[editingCell.dayIdx],
+                                                            type,
+                                                            label: defaultLabel
+                                                        };
+                                                        updateSchedule(editingCell.empIdx, editingCell.dayIdx, newVal);
+                                                        setEditingCell({ ...editingCell, data: newVal });
+                                                    }}
+                                                    className={`py-2 text-sm border rounded-sm capitalize ${schedules[selectedTeam][editingCell.empIdx].schedule[editingCell.dayIdx].type === type
+                                                        ? "bg-black text-white border-black"
+                                                        : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                                                        }`}
+                                                >
+                                                    {type === "wfh" ? "Work from Home" : type}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {schedules[selectedTeam][editingCell.empIdx].schedule[editingCell.dayIdx].type !== "off" && (
+                                        <>
+                                            <div>
+                                                <label className="block text-xs font-medium uppercase tracking-wider text-gray-500 mb-2">Shift Hours</label>
+                                                <input
+                                                    type="text"
+                                                    value={schedules[selectedTeam][editingCell.empIdx].schedule[editingCell.dayIdx].label}
+                                                    onChange={(e) => {
+                                                        const newVal = { ...schedules[selectedTeam][editingCell.empIdx].schedule[editingCell.dayIdx], label: e.target.value };
+                                                        updateSchedule(editingCell.empIdx, editingCell.dayIdx, newVal);
+                                                    }}
+                                                    className="w-full px-3 py-2 border border-gray-200 rounded-sm text-sm font-mono"
+                                                />
+                                            </div>
+
+                                            <div className="border-t border-gray-100 pt-6">
+                                                <div className="flex justify-between items-center mb-4">
+                                                    <label className="block text-xs font-medium uppercase tracking-wider text-gray-500">Hourly Tasks / Meetings</label>
+                                                    <button
+                                                        onClick={() => {
+                                                            const currentTasks = schedules[selectedTeam][editingCell.empIdx].schedule[editingCell.dayIdx].tasks || [];
+                                                            const newVal = {
+                                                                ...schedules[selectedTeam][editingCell.empIdx].schedule[editingCell.dayIdx],
+                                                                tasks: [...currentTasks, { id: Date.now(), time: "", title: "" }]
+                                                            };
+                                                            updateSchedule(editingCell.empIdx, editingCell.dayIdx, newVal);
+                                                        }}
+                                                        className="text-xs bg-black text-white px-2 py-1 rounded-sm hover:opacity-90"
+                                                    >
+                                                        + Add Task
+                                                    </button>
+                                                </div>
+
+                                                <div className="space-y-3">
+                                                    {(schedules[selectedTeam][editingCell.empIdx].schedule[editingCell.dayIdx].tasks || []).map((task, idx) => (
+                                                        <div key={task.id} className="flex gap-2 items-start">
+                                                            <input
+                                                                placeholder="10:00 - 11:00"
+                                                                value={task.time}
+                                                                onChange={(e) => {
+                                                                    const tasks = [...(schedules[selectedTeam][editingCell.empIdx].schedule[editingCell.dayIdx].tasks || [])];
+                                                                    tasks[idx].time = e.target.value;
+                                                                    updateSchedule(editingCell.empIdx, editingCell.dayIdx, { ...schedules[selectedTeam][editingCell.empIdx].schedule[editingCell.dayIdx], tasks });
+                                                                }}
+                                                                className="w-24 px-2 py-2 border border-gray-200 rounded-sm text-xs font-mono"
+                                                            />
+                                                            <input
+                                                                placeholder="Task/Meeting description..."
+                                                                value={task.title}
+                                                                onChange={(e) => {
+                                                                    const tasks = [...(schedules[selectedTeam][editingCell.empIdx].schedule[editingCell.dayIdx].tasks || [])];
+                                                                    tasks[idx].title = e.target.value;
+                                                                    updateSchedule(editingCell.empIdx, editingCell.dayIdx, { ...schedules[selectedTeam][editingCell.empIdx].schedule[editingCell.dayIdx], tasks });
+                                                                }}
+                                                                className="flex-1 px-2 py-2 border border-gray-200 rounded-sm text-xs"
+                                                            />
+                                                            <button
+                                                                onClick={() => {
+                                                                    const tasks = (schedules[selectedTeam][editingCell.empIdx].schedule[editingCell.dayIdx].tasks || []).filter((_, i) => i !== idx);
+                                                                    updateSchedule(editingCell.empIdx, editingCell.dayIdx, { ...schedules[selectedTeam][editingCell.empIdx].schedule[editingCell.dayIdx], tasks });
+                                                                }}
+                                                                className="p-2 text-gray-400 hover:text-red-500"
+                                                            >
+                                                                <X className="w-4 h-4" />
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                    {(!schedules[selectedTeam][editingCell.empIdx].schedule[editingCell.dayIdx].tasks || schedules[selectedTeam][editingCell.empIdx].schedule[editingCell.dayIdx].tasks.length === 0) && (
+                                                        <div className="text-xs text-gray-400 text-center py-4 bg-gray-50 rounded-sm">
+                                                            No tasks added for this day.
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                                <div className="mt-8 pt-4 border-t border-gray-100 flex justify-end">
+                                    <button
+                                        onClick={() => setEditingCell(null)}
+                                        className="px-6 py-2 bg-black text-white text-sm font-medium rounded-sm hover:opacity-90"
+                                    >
+                                        Done
+                                    </button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
         </AdminLayout>
     );
 }

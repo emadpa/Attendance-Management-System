@@ -1,6 +1,6 @@
-import axios from 'axios';
+import axios from "axios";
 
-const API_URL = 'http://localhost:8000/api';
+const API_URL = "http://localhost:8000/api";
 
 export const verifyAttendance = async (data) => {
   try {
@@ -9,8 +9,8 @@ export const verifyAttendance = async (data) => {
   } catch (error) {
     console.error("API Error:", error);
     if (error.response) {
-       // If API returns 400/something logic error structure
-       return error.response.data;
+      // If API returns 400/something logic error structure
+      return error.response.data;
     }
     throw error;
   }

@@ -1,8 +1,8 @@
-@import "tailwindcss";
-
 /* Import Google Fonts */
 /* Playfair Display (400, 600, 700), Work Sans (300, 400, 500, 600), IBM Plex Mono (500) */
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Work+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@500&display=swap');
+
+@import "tailwindcss";
 
 @theme {
   /* Fonts */
