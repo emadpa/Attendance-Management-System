@@ -1,296 +1,485 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import axios from "axios";
 import { AdminLayout } from "./AdminLayout";
 import { Badge } from "../shared/Badge";
 import { Input } from "../shared/Input";
+import { Select } from "../shared/Select";
 import { Textarea } from "../shared/Textarea";
 import { Toast, useToast } from "../shared/Toast";
 import { motion } from "framer-motion";
-import { Send, Trash2 } from "lucide-react";
+import { Send, Trash2, Loader2, Search } from "lucide-react";
 
 export function AdminNotifications() {
-    const { toast, showToast, hideToast } = useToast();
-    const [audience, setAudience] = useState("All Employees");
-    const [selectedTeam, setSelectedTeam] = useState("Engineering");
-    const [title, setTitle] = useState("");
-    const [message, setMessage] = useState("");
-    const [isHighPriority, setIsHighPriority] = useState(false);
-    const [errors, setErrors] = useState({});
+  const { toast, showToast, hideToast } = useToast();
 
-    const [announcements, setAnnouncements] = useState([
-        { id: 1, title: "Office Renovation Update", author: "Admin", time: "2 hours ago", audience: "All Employees", status: "Active", message: "The office renovation will begin next week." },
-        { id: 2, title: "New Leave Policy", author: "HR", time: "Yesterday", audience: "All Employees", status: "Active", message: "Please review the updated leave policy." },
-        { id: 3, title: "Engineering All-Hands", author: "CTO", time: "3 days ago", audience: "Engineering", status: "Archived", message: "Quarterly engineering meeting scheduled." },
-    ]);
+  const [announcements, setAnnouncements] = useState([]);
+  const [drafts, setDrafts] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-    const [drafts, setDrafts] = useState([]);
+  const [editingDraftId, setEditingDraftId] = useState(null);
+  const [audience, setAudience] = useState("ALL");
+  const [selectedDeptId, setSelectedDeptId] = useState("");
+  const [selectedEmpId, setSelectedEmpId] = useState("");
+  const [title, setTitle] = useState("");
+  const [message, setMessage] = useState("");
+  const [errors, setErrors] = useState({});
 
-    const teams = ["Engineering", "Product", "Design", "People"];
+  const [empSearchTerm, setEmpSearchTerm] = useState("");
+  const [isEmpDropdownOpen, setIsEmpDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
 
-    // Publish announcement
-    const handlePublish = () => {
-        const validationErrors = {};
-        if (!title.trim()) validationErrors.title = "Title is required";
-        if (!message.trim()) validationErrors.message = "Message is required";
+  const API_URL = "http://localhost:5000/api/admin/notifications";
 
-        if (Object.keys(validationErrors).length > 0) {
-            setErrors(validationErrors);
-            return;
-        }
-
-        const newAnnouncement = {
-            id: Date.now(),
-            title,
-            message,
-            author: "Admin",
-            time: "Just now",
-            audience: audience === "Specific Team" ? selectedTeam : audience,
-            status: "Active",
-            priority: isHighPriority,
-        };
-
-        setAnnouncements([newAnnouncement, ...announcements]);
-        resetForm();
-        showToast("Announcement published successfully", "success");
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsEmpDropdownOpen(false);
+      }
     };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
-    // Save draft
-    const handleSaveDraft = () => {
-        if (!title.trim() && !message.trim()) {
-            showToast("Cannot save empty draft", "error");
-            return;
-        }
+  const fetchNotifications = async () => {
+    setIsLoading(true);
+    try {
+      const response = await axios.get(API_URL);
+      setAnnouncements(response.data.notifications);
+      setDrafts(response.data.drafts);
+      setDepartments(response.data.departments);
+      setEmployees(response.data.employees);
+    } catch (error) {
+      showToast("Failed to load notifications", "error");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-        const draft = {
-            id: Date.now(),
-            title,
-            message,
-            audience: audience === "Specific Team" ? selectedTeam : audience,
-            priority: isHighPriority,
-            savedAt: new Date().toLocaleString(),
-        };
+  useEffect(() => {
+    fetchNotifications();
+  }, []);
 
-        setDrafts([draft, ...drafts]);
-        resetForm();
-        showToast("Draft saved", "success");
-    };
+  // ✅ Updated filtering logic combining search term AND department filter
+  const filteredEmployees = employees.filter((emp) => {
+    const matchesSearch =
+      emp.name.toLowerCase().includes(empSearchTerm.toLowerCase()) ||
+      emp.empId.toLowerCase().includes(empSearchTerm.toLowerCase());
 
-    // Load draft
-    const loadDraft = (draft) => {
-        setTitle(draft.title);
-        setMessage(draft.message);
-        setAudience(teams.includes(draft.audience) ? "Specific Team" : draft.audience);
-        if (teams.includes(draft.audience)) {
-            setSelectedTeam(draft.audience);
-        }
-        setIsHighPriority(draft.priority || false);
-        setDrafts(drafts.filter(d => d.id !== draft.id));
-        showToast("Draft loaded", "success");
-    };
+    const matchesDept = selectedDeptId
+      ? emp.departmentId === selectedDeptId
+      : true;
 
-    // Load announcement for editing
-    const loadAnnouncement = (announcement) => {
-        setTitle(announcement.title);
-        setMessage(announcement.message);
-        setAudience(teams.includes(announcement.audience) ? "Specific Team" : announcement.audience);
-        if (teams.includes(announcement.audience)) {
-            setSelectedTeam(announcement.audience);
-        }
-        setIsHighPriority(announcement.priority || false);
-    };
+    return matchesSearch && matchesDept;
+  });
 
-    // Archive announcement
-    const handleArchive = (id) => {
-        setAnnouncements(announcements.map(a =>
-            a.id === id ? { ...a, status: a.status === "Active" ? "Archived" : "Active" } : a
-        ));
-        showToast("Announcement status updated", "success");
-    };
+  const handleSubmit = async (isDraftMode) => {
+    const validationErrors = {};
+    if (!title.trim()) validationErrors.title = "Title is required";
+    if (!message.trim()) validationErrors.message = "Message is required";
 
-    // Delete announcement
-    const handleDelete = (id) => {
-        if (window.confirm("Are you sure you want to delete this announcement?")) {
-            setAnnouncements(announcements.filter(a => a.id !== id));
-            showToast("Announcement deleted", "success");
-        }
-    };
+    if (audience === "DEPARTMENT" && !selectedDeptId)
+      showToast("Please select a department", "error");
+    if (audience === "INDIVIDUAL" && !selectedEmpId)
+      showToast("Please select an employee", "error");
 
-    // Reset form
-    const resetForm = () => {
-        setTitle("");
-        setMessage("");
-        setAudience("All Employees");
-        setSelectedTeam("Engineering");
-        setIsHighPriority(false);
-        setErrors({});
-    };
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      return;
+    }
 
+    try {
+      let targetId = null;
+      if (audience === "DEPARTMENT") targetId = selectedDeptId;
+      if (audience === "INDIVIDUAL") targetId = selectedEmpId;
+
+      const payload = {
+        title,
+        message,
+        targetType: audience,
+        targetId,
+        isDraft: isDraftMode,
+      };
+
+      let response;
+      if (editingDraftId) {
+        response = await axios.put(`${API_URL}/${editingDraftId}`, payload);
+      } else {
+        response = await axios.post(API_URL, payload);
+      }
+
+      fetchNotifications();
+      resetForm();
+      showToast(
+        isDraftMode
+          ? "Draft saved to database"
+          : "Notification sent successfully!",
+        "success",
+      );
+    } catch (error) {
+      showToast("Failed to save notification", "error");
+    }
+  };
+
+  const loadDraft = (draft) => {
+    setEditingDraftId(draft.id);
+    setTitle(draft.title);
+    setMessage(draft.message);
+    setAudience(draft.targetType);
+    setSelectedDeptId(draft.targetType === "DEPARTMENT" ? draft.targetId : "");
+    setSelectedEmpId(draft.targetType === "INDIVIDUAL" ? draft.targetId : "");
+
+    if (draft.targetType === "INDIVIDUAL") {
+      const emp = employees.find((e) => e.id === draft.targetId);
+      if (emp) setEmpSearchTerm(`${emp.name} (${emp.empId})`);
+    }
+
+    showToast("Draft loaded for editing", "success");
+  };
+
+  const handleDelete = async (id) => {
+    if (
+      window.confirm("Are you sure? This will remove the record completely.")
+    ) {
+      try {
+        await axios.delete(`${API_URL}/${id}`);
+        setAnnouncements(announcements.filter((a) => a.id !== id));
+        setDrafts(drafts.filter((d) => d.id !== id));
+        if (editingDraftId === id) resetForm();
+        showToast("Deleted successfully", "success");
+      } catch (error) {
+        showToast("Failed to delete", "error");
+      }
+    }
+  };
+
+  const resetForm = () => {
+    setEditingDraftId(null);
+    setTitle("");
+    setMessage("");
+    setAudience("ALL");
+    setSelectedDeptId("");
+    setSelectedEmpId("");
+    setEmpSearchTerm("");
+    setErrors({});
+  };
+
+  const getDeptName = (id) =>
+    departments.find((d) => d.id === id)?.name || "Unknown Dept";
+  const getEmpName = (id) =>
+    employees.find((e) => e.id === id)?.name || "Unknown Employee";
+
+  const getTargetLabel = (type, targetId) => {
+    if (type === "ALL") return "All Employees";
+    if (type === "DEPARTMENT") return getDeptName(targetId);
+    if (type === "INDIVIDUAL") return getEmpName(targetId);
+    return "Unknown";
+  };
+
+  if (isLoading) {
     return (
-        <AdminLayout title="Notifications" description="Broadcast company-wide announcements and updates.">
-            <Toast {...toast} onClose={hideToast} />
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 h-full">
-                {/* Compose Area */}
-                <div className="bg-white border border-gray-200 rounded-sm p-6 sm:p-8 h-fit">
-                    <h3 className="text-xl font-serif mb-6">New Announcement</h3>
-
-                    <div className="space-y-6">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Audience</label>
-                            <div className="flex flex-wrap gap-2">
-                                {["All Employees", "Specific Team", "Individuals"].map(opt => (
-                                    <button
-                                        key={opt}
-                                        onClick={() => setAudience(opt)}
-                                        className={`px-4 py-2 border rounded-sm text-sm transition-colors ${audience === opt
-                                            ? "bg-black text-white border-black"
-                                            : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
-                                            }`}
-                                    >
-                                        {opt}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        {audience === "Specific Team" && (
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Select Team</label>
-                                <div className="flex flex-wrap gap-2">
-                                    {teams.map(team => (
-                                        <button
-                                            key={team}
-                                            onClick={() => setSelectedTeam(team)}
-                                            className={`px-3 py-1.5 border rounded-sm text-sm transition-colors ${selectedTeam === team
-                                                ? "bg-gray-100 border-gray-300"
-                                                : "bg-white border-gray-200 hover:border-gray-300"
-                                                }`}
-                                        >
-                                            {team}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        <Input
-                            label="Title"
-                            value={title}
-                            onChange={(e) => setTitle(e.target.value)}
-                            error={errors.title}
-                            placeholder="e.g. Q1 Town Hall"
-                            className="font-serif text-lg"
-                        />
-
-                        <Textarea
-                            label="Message"
-                            value={message}
-                            onChange={(e) => setMessage(e.target.value)}
-                            error={errors.message}
-                            rows={6}
-                            placeholder="Write your announcement here..."
-                        />
-
-                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pt-4 gap-4">
-                            <div className="flex items-center gap-2">
-                                <input
-                                    type="checkbox"
-                                    id="urgent"
-                                    checked={isHighPriority}
-                                    onChange={(e) => setIsHighPriority(e.target.checked)}
-                                    className="accent-black"
-                                />
-                                <label htmlFor="urgent" className="text-sm text-gray-600">Mark as High Priority</label>
-                            </div>
-                            <div className="flex gap-3 w-full sm:w-auto">
-                                <button
-                                    onClick={handleSaveDraft}
-                                    className="flex-1 sm:flex-none px-4 py-2 text-sm text-gray-500 hover:text-black transition-colors"
-                                >
-                                    Save Draft
-                                </button>
-                                <button
-                                    onClick={handlePublish}
-                                    className="flex-1 sm:flex-none px-6 py-2 bg-black text-white text-sm uppercase tracking-wider rounded-sm hover:opacity-90 flex items-center justify-center gap-2"
-                                >
-                                    <Send className="w-3 h-3" />
-                                    Publish
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Recent Broadcasts & Drafts */}
-                <div className="space-y-6">
-                    {/* Drafts */}
-                    {drafts.length > 0 && (
-                        <div>
-                            <h3 className="text-sm font-medium text-gray-400 uppercase tracking-widest mb-4">Drafts ({drafts.length})</h3>
-                            <div className="space-y-3">
-                                {drafts.map((draft) => (
-                                    <div
-                                        key={draft.id}
-                                        className="bg-amber-50 border border-amber-200 p-4 rounded-sm cursor-pointer hover:shadow-md transition-shadow"
-                                        onClick={() => loadDraft(draft)}
-                                    >
-                                        <h4 className="font-serif text-base mb-1">{draft.title || "Untitled Draft"}</h4>
-                                        <p className="text-xs text-gray-500">Saved {draft.savedAt}</p>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Recent Broadcasts */}
-                    <div>
-                        <h3 className="text-sm font-medium text-gray-400 uppercase tracking-widest mb-4">Recent Broadcasts</h3>
-
-                        <div className="space-y-4">
-                            {announcements.map((item) => (
-                                <motion.div
-                                    key={item.id}
-                                    initial={{ opacity: 0, y: 10 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    className="bg-white border border-gray-200 p-4 sm:p-6 rounded-sm hover:shadow-md transition-shadow group"
-                                >
-                                    <div className="flex justify-between items-start mb-2">
-                                        <h4
-                                            onClick={() => loadAnnouncement(item)}
-                                            className="font-serif text-base sm:text-lg cursor-pointer hover:underline decoration-1 underline-offset-4"
-                                        >
-                                            {item.title}
-                                        </h4>
-                                        <div className={`w-2 h-2 rounded-full ${item.status === 'Active' ? 'bg-blue-500' : 'bg-gray-300'}`} />
-                                    </div>
-                                    <p className="text-xs text-gray-400 mb-4">Published by {item.author} · {item.time}</p>
-
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex gap-2 flex-wrap">
-                                            <Badge variant="outline" className="text-[10px]">{item.audience}</Badge>
-                                            {item.status === 'Active' && <Badge variant="success" className="text-[10px]">Live</Badge>}
-                                            {item.priority && <Badge variant="warning" className="text-[10px]">High Priority</Badge>}
-                                        </div>
-                                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button
-                                                onClick={() => handleArchive(item.id)}
-                                                className="text-xs text-gray-500 hover:text-black"
-                                            >
-                                                {item.status === "Active" ? "Archive" : "Activate"}
-                                            </button>
-                                            <button
-                                                onClick={() => handleDelete(item.id)}
-                                                className="text-gray-400 hover:text-red-600"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                    </div>
-                                </motion.div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </AdminLayout>
+      <AdminLayout title="Notifications" description="Loading broadcasts...">
+        <div className="flex justify-center items-center h-64">
+          <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+        </div>
+      </AdminLayout>
     );
+  }
+
+  return (
+    <AdminLayout
+      title="Notifications"
+      description="Broadcast company-wide announcements or message individuals directly."
+    >
+      <Toast {...toast} onClose={hideToast} />
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 h-full">
+        {/* Compose Area */}
+        <div className="bg-white border border-gray-200 rounded-sm p-6 sm:p-8 h-fit relative">
+          {editingDraftId && (
+            <div className="absolute top-0 left-0 w-full bg-amber-50 border-b border-amber-200 px-6 py-2 text-xs font-medium text-amber-800 flex justify-between">
+              <span>Editing Draft Mode</span>
+              <button
+                onClick={resetForm}
+                className="hover:underline text-amber-900"
+              >
+                Cancel / Clear
+              </button>
+            </div>
+          )}
+
+          <h3
+            className={`text-xl font-serif mb-6 ${editingDraftId ? "mt-6" : ""}`}
+          >
+            {editingDraftId ? "Edit Draft" : "New Message"}
+          </h3>
+
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Audience
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => {
+                    setAudience("ALL");
+                    setSelectedDeptId("");
+                    setSelectedEmpId("");
+                  }}
+                  className={`px-4 py-2 border rounded-sm text-sm transition-colors ${audience === "ALL" ? "bg-black text-white border-black" : "bg-white text-gray-600 border-gray-200"}`}
+                >
+                  All Employees
+                </button>
+                <button
+                  onClick={() => {
+                    setAudience("DEPARTMENT");
+                    setSelectedEmpId("");
+                    setEmpSearchTerm("");
+                  }}
+                  className={`px-4 py-2 border rounded-sm text-sm transition-colors ${audience === "DEPARTMENT" ? "bg-black text-white border-black" : "bg-white text-gray-600 border-gray-200"}`}
+                >
+                  Specific Department
+                </button>
+                <button
+                  onClick={() => setAudience("INDIVIDUAL")}
+                  className={`px-4 py-2 border rounded-sm text-sm transition-colors ${audience === "INDIVIDUAL" ? "bg-black text-white border-black" : "bg-white text-gray-600 border-gray-200"}`}
+                >
+                  Single Employee
+                </button>
+              </div>
+            </div>
+
+            {/* ✅ Show Department Dropdown for BOTH 'DEPARTMENT' and 'INDIVIDUAL' modes */}
+            {(audience === "DEPARTMENT" || audience === "INDIVIDUAL") && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+              >
+                <Select
+                  label={
+                    audience === "INDIVIDUAL"
+                      ? "Filter by Department (Optional)"
+                      : "Select Department"
+                  }
+                  value={selectedDeptId}
+                  onChange={(e) => {
+                    setSelectedDeptId(e.target.value);
+                    setEmpSearchTerm(""); // Reset search when switching departments
+                    setSelectedEmpId("");
+                  }}
+                >
+                  <option value="">
+                    {audience === "INDIVIDUAL"
+                      ? "All Departments"
+                      : "Choose a department..."}
+                  </option>
+                  {departments.map((dept) => (
+                    <option key={dept.id} value={dept.id}>
+                      {dept.name}
+                    </option>
+                  ))}
+                </Select>
+              </motion.div>
+            )}
+
+            {/* ✅ Show Search Box only for INDIVIDUAL mode */}
+            {audience === "INDIVIDUAL" && (
+              <motion.div
+                ref={dropdownRef}
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                className="relative"
+              >
+                <label className="block text-xs font-bold text-gray-600 mb-2 uppercase tracking-wide">
+                  Search Employee
+                </label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Type name or Employee ID..."
+                    value={empSearchTerm}
+                    onChange={(e) => {
+                      setEmpSearchTerm(e.target.value);
+                      setIsEmpDropdownOpen(true);
+                      setSelectedEmpId("");
+                    }}
+                    onFocus={() => setIsEmpDropdownOpen(true)}
+                    className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-md text-sm focus:outline-none focus:border-black focus:ring-1 focus:ring-black transition-all"
+                  />
+                </div>
+
+                {isEmpDropdownOpen && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 shadow-xl rounded-md max-h-60 overflow-y-auto">
+                    {filteredEmployees.length > 0 ? (
+                      filteredEmployees.map((emp) => (
+                        <div
+                          key={emp.id}
+                          className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-50 last:border-0"
+                          onClick={() => {
+                            setSelectedEmpId(emp.id);
+                            setEmpSearchTerm(`${emp.name} (${emp.empId})`);
+                            setIsEmpDropdownOpen(false);
+                          }}
+                        >
+                          <div className="font-medium text-gray-900">
+                            {emp.name}
+                          </div>
+                          <div className="text-xs text-gray-500 font-mono">
+                            {emp.empId}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="px-4 py-4 text-sm text-gray-500 text-center">
+                        No employees found matching "{empSearchTerm}"{" "}
+                        {selectedDeptId && "in this department"}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </motion.div>
+            )}
+
+            <Input
+              label="Subject / Title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              error={errors.title}
+              placeholder="e.g. Mandatory System Update"
+              className="font-serif text-lg"
+            />
+
+            <Textarea
+              label="Message Body"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              error={errors.message}
+              rows={6}
+              placeholder="Write your message here..."
+            />
+
+            <div className="flex justify-end pt-4">
+              <div className="flex gap-3 w-full sm:w-auto">
+                <button
+                  onClick={() => handleSubmit(true)}
+                  className="flex-1 sm:flex-none px-4 py-2 text-sm text-gray-500 hover:text-black transition-colors"
+                >
+                  Save Draft
+                </button>
+                <button
+                  onClick={() => handleSubmit(false)}
+                  className="flex-1 sm:flex-none px-6 py-2 bg-black text-white text-sm uppercase tracking-wider rounded-sm hover:opacity-90 flex items-center justify-center gap-2"
+                >
+                  <Send className="w-3 h-3" />
+                  {editingDraftId ? "Publish Draft" : "Send Notification"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Panel: Database Drafts & History */}
+        <div className="space-y-6">
+          {/* DATABASE DRAFTS */}
+          {drafts.length > 0 && (
+            <div>
+              <h3 className="text-sm font-medium text-gray-400 uppercase tracking-widest mb-4">
+                Saved Drafts
+              </h3>
+              <div className="space-y-3">
+                {drafts.map((draft) => (
+                  <div
+                    key={draft.id}
+                    className="bg-amber-50 border border-amber-200 p-4 rounded-sm hover:shadow-md transition-shadow relative group"
+                  >
+                    <div
+                      className="cursor-pointer pr-8"
+                      onClick={() => loadDraft(draft)}
+                    >
+                      <h4 className="font-serif text-base mb-1">
+                        {draft.title || "Untitled Draft"}
+                      </h4>
+                      <p className="text-xs text-gray-500">
+                        Saved: {new Date(draft.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                    {/* Delete Draft Button */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(draft.id);
+                      }}
+                      className="absolute top-4 right-4 text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* PUBLISHED HISTORY */}
+          <div>
+            <h3 className="text-sm font-medium text-gray-400 uppercase tracking-widest mb-4">
+              Sent History
+            </h3>
+            <div className="space-y-4">
+              {announcements.length === 0 && (
+                <p className="text-gray-500 text-sm">
+                  No notifications sent yet.
+                </p>
+              )}
+
+              {announcements.map((item) => (
+                <motion.div
+                  key={item.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-white border border-gray-200 p-4 sm:p-6 rounded-sm hover:border-gray-300 transition-colors group"
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <h4 className="font-serif text-base sm:text-lg">
+                      {item.title}
+                    </h4>
+                    <button
+                      onClick={() => handleDelete(item.id)}
+                      className="text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <p className="text-xs text-gray-400 mb-4">
+                    Sent by Admin ·{" "}
+                    {new Date(item.createdAt).toLocaleDateString()}
+                  </p>
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex gap-2 flex-wrap">
+                      <Badge
+                        variant={
+                          item.targetType === "INDIVIDUAL"
+                            ? "warning"
+                            : "outline"
+                        }
+                        className="text-[10px]"
+                      >
+                        {getTargetLabel(item.targetType, item.targetId)}
+                      </Badge>
+                      <Badge variant="success" className="text-[10px]">
+                        Sent
+                      </Badge>
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </AdminLayout>
+  );
 }

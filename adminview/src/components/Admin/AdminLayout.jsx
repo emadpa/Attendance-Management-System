@@ -10,16 +10,20 @@ import {
   CalendarClock,
   Settings,
   LogOut,
+  Clock,
   Menu,
   X,
+  PieChart,
   Building,
-  Building2, // ✅ Add Building2 right here
+  Building2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export function AdminLayout({ title, description, actions, children }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const { logout } = useAuth();
+
+  // ✅ Extract 'user' from your AuthContext
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
 
   const handleLogout = () => {
@@ -30,8 +34,10 @@ export function AdminLayout({ title, description, actions, children }) {
   const navItems = [
     { label: "Overview", to: "/admin", icon: LayoutDashboard, exact: true },
     { label: "Employees", to: "/admin/employees", icon: Users },
+    { label: "Reports", to: "/admin/reports", icon: PieChart },
     { label: "Departments", to: "/admin/departments", icon: Building },
     { label: "Leaves", to: "/admin/leaves", icon: CalendarDays },
+    { label: "Shifts", to: "/admin/shifts", icon: Clock },
     { label: "Notifications", to: "/admin/notifications", icon: Bell },
     { label: "Schedules", to: "/admin/schedules", icon: CalendarClock },
   ];
@@ -40,9 +46,13 @@ export function AdminLayout({ title, description, actions, children }) {
     <>
       <div>
         <div className="mb-16 px-3 flex items-center gap-2">
-          <div className="h-8 w-8 bg-black rounded-full" />
-          <span className="text-xl font-serif font-bold tracking-tight">
-            LuxeHR
+          <div className="h-8 w-8 bg-black rounded-full flex-shrink-0" />
+          {/* ✅ Changed to line-clamp-2 and leading-tight for graceful wrapping */}
+          <span
+            className="text-lg font-serif font-bold tracking-tight leading-tight line-clamp-2"
+            title={user?.orgName || "Dashboard"}
+          >
+            {user?.orgName || "Dashboard"}
           </span>
         </div>
 
@@ -72,7 +82,6 @@ export function AdminLayout({ title, description, actions, children }) {
       </div>
 
       <div className="space-y-2 text-sm text-gray-400 px-3">
-        {/* Admin Settings Link */}
         <NavLink
           to="/admin/settings/admins"
           onClick={() => setIsMobileMenuOpen(false)}

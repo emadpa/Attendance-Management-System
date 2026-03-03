@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios"; // ✅ Imported axios
+import axios from "axios";
 import { AdminLayout } from "./AdminLayout";
 import { StatCard } from "../shared/StatCard";
 import { Badge } from "../shared/Badge";
@@ -7,12 +7,12 @@ import { Toast, useToast } from "../shared/Toast";
 import { motion } from "framer-motion";
 import { Clock, ChevronRight, RefreshCw, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { AttendanceChart } from "../shared/AttendanceChart"; // ✅ Imported the new component!
 
 export function AdminOverview() {
   const { toast, showToast, hideToast } = useToast();
   const navigate = useNavigate();
 
-  // Loading and State
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [data, setData] = useState({
@@ -20,27 +20,19 @@ export function AdminOverview() {
     stats: [],
     actionCenter: { pendingLeaves: 0, pendingTimesheets: 0 },
     recentActivity: [],
+    chartData: [], // Added this in case your backend sends real chart data later
   });
 
-  // ✅ Fetch from Express Backend using Axios
   const fetchDashboardData = async (isRefresh = false) => {
     if (isRefresh) setIsRefreshing(true);
-
     try {
-      // Adjust this URL to match your Node.js server port
       const response = await axios.get(
         "http://localhost:5000/api/admin/overview",
       );
-
-      // Axios automatically parses JSON into response.data
       setData(response.data);
-
       if (isRefresh) showToast("Data refreshed successfully", "success");
     } catch (error) {
-      console.error(
-        "Error fetching dashboard data:",
-        error.response?.data || error.message,
-      );
+      console.error("Dashboard error:", error);
       showToast("Could not load dashboard data", "error");
     } finally {
       setIsLoading(false);
@@ -58,7 +50,8 @@ export function AdminOverview() {
 
   const handlePendingClick = (type) => {
     if (type === "leaves") navigate("/admin/leaves");
-    else if (type === "timesheets") navigate("/admin/schedules");
+    else if (type === "timesheets")
+      navigate("/admin/attendance?filter=corrections");
   };
 
   const container = {
@@ -66,7 +59,6 @@ export function AdminOverview() {
     show: { opacity: 1, transition: { staggerChildren: 0.1 } },
   };
 
-  // ⏳ Loading State
   if (isLoading) {
     return (
       <AdminLayout
@@ -99,8 +91,8 @@ export function AdminOverview() {
     >
       <Toast {...toast} onClose={hideToast} />
 
-      {/* Top Row: Snapshot & Action Center */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8 mb-8 sm:mb-12">
+      {/* TOP ROW: Snapshot & Action Center */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8 mb-8">
         {/* Today's Snapshot */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -183,7 +175,10 @@ export function AdminOverview() {
         </motion.div>
       </div>
 
-      {/* Stats Strip */}
+      {/* ✅ Cleanly rendered Chart Component */}
+      <AttendanceChart data={data.chartData} />
+
+      {/* STAT CARDS */}
       <motion.div
         variants={container}
         initial="hidden"
@@ -195,7 +190,7 @@ export function AdminOverview() {
         ))}
       </motion.div>
 
-      {/* Recent Activity */}
+      {/* RECENT ACTIVITY */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}

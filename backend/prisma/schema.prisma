@@ -51,13 +51,24 @@ enum WorkType {
 }
 
 // --- MODELS ---
+model Holiday {
+  id             String   @id @default(uuid())
+  name           String
+  date           DateTime 
+  organizationId String
+  createdAt      DateTime @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // Prevents adding duplicate holidays on the exact same day for the same org
+  @@unique([date, organizationId])
+}
 
 model Organization {
   id                    String   @id @default(uuid())
   name                  String
   contactEmail          String   @unique
   phone                 String?
-  address               String?
+  
 
   latitude              Float?
   longitude             Float?
@@ -80,6 +91,7 @@ model Organization {
   attendances           Attendance[]
   leaveRequests         LeaveRequest[]
   leaveTypes            LeaveType[]
+  holidays         Holiday[]
 }
 
 model User {
@@ -103,13 +115,16 @@ model User {
   // Default shift (e.g., standard 9-5)
   shiftId               String?
 
-  isActive              Boolean  @default(true)
+  isActive              Boolean  @default(false)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
   // Relationships
   organization          Organization            @relation(fields: [organizationId], references: [id])
-  department            Department              @relation(fields: [departmentId], references: [id])
+  department           Department   @relation("DepartmentMembers", fields: [departmentId], references: [id]) 
+  
+  // ✅ Matches "DepartmentHead" (An array in case one person heads multiple departments)
+  headedDepartments    Department[] @relation("DepartmentHead")
   shift                 Shift?                  @relation(fields: [shiftId], references: [id])
   leaveBalances         LeaveBalance[] 
   // The attendance/leaves they generated
@@ -137,8 +152,14 @@ model Department {
   name           String
   organizationId String
   
+  // ✅ Added headId (optional, in case a department has no head yet)
+  headId         String?      
+  
   organization   Organization @relation(fields: [organizationId], references: [id])
-  users          User[]
+  
+  // ✅ Named the relations to prevent Prisma from getting confused
+  users          User[]       @relation("DepartmentMembers")
+  head           User?        @relation("DepartmentHead", fields: [headId], references: [id])
 }
 
 model Shift {
@@ -157,6 +178,7 @@ model LeaveType {
   id             String         @id @default(uuid())
   name           String         
   defaultAllowed Int
+  isPaid         Boolean   @default(true)
   organizationId String         // ✅ Add this
   
   // Relations
@@ -215,7 +237,7 @@ model Notification {
   
   title          String
   message        String
-  
+  isDraft        Boolean            @default(false)
   targetType     NotificationTarget
   targetId       String?            // Can hold departmentId, userId, or be null if targeting ALL
   
@@ -253,7 +275,7 @@ model Attendance {
   userId                String
   organizationId        String
   
-  date                  DateTime @db.Date // Ensures it only stores the YYYY-MM-DD
+  date                   DateTime  @db.Date// Ensures it only stores the YYYY-MM-DD
   shiftId               String?
 
   // --- Time Logs ---
@@ -276,12 +298,10 @@ model Attendance {
   // --- Location & Device Security ---
   latitude              Float?
   longitude             Float?
-  address               String?
+
   isGeofenceValid       Boolean  @default(true)
   
-  userAgent             String?
-  ipAddress             String?
-  deviceId              String?
+  
 
   // --- Manual Override ---
   isManualEntry         Boolean  @default(false)
@@ -316,6 +336,7 @@ model LeaveRequest {
   reviewedById          String?
   reviewedAt            DateTime?
   reviewerNotes         String?
+  isAdHoc        Boolean     @default(false)
 
   createdAt             DateTime    @default(now())
   updatedAt             DateTime    @updatedAt
