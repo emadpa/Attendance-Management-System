@@ -63,13 +63,6 @@ model Holiday {
   @@unique([date, organizationId])
 }
 
-model Holiday {
-  id             String   @id @default(uuid())
-  name           String
-  date           DateTime 
-  organizationId String
-  createdAt      DateTime @default(now())
-}
 
 model Organization {
   id                    String   @id @default(uuid())

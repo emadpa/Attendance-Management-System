@@ -6,8 +6,6 @@ const FormData = require("form-data");
 const bcrypt = require("bcrypt");
 const { startOfDay } = require("date-fns");
 
-console.log(Object.keys(prisma));
-
 const PYTHON_SERVICE_URL =
   process.env.PYTHON_SERVICE_URL || "http://localhost:8000";
 
@@ -88,15 +86,15 @@ exports.registerBiometric = async (req, res) => {
 
 exports.loginUser = async (req, res) => {
   try {
-    const { empId, password } = req.body;
+    const { email, password } = req.body;
 
-    if (!empId || !password) {
+    if (!email || !password) {
       return res.status(400).json({
-        error: "empId and password are required",
+        error: "Email and password are required",
       });
     }
 
-    // Find user by empId
+    // Find user by email
     const user = await prisma.user.findFirst({
       where: {
         empId: empId,
@@ -289,7 +287,7 @@ exports.getYearlyAttendancePercentage = async (req, res) => {
 
 // GET /employee/dashboard
 exports.getDashboard = async (req, res) => {
-  const { userId } = req.body;
+  const userId = req.user.id;
   //   const orgId = req.user.organizationId;
 
   const user = await prisma.user.findUnique({
@@ -297,7 +295,7 @@ exports.getDashboard = async (req, res) => {
     select: {
       name: true,
       empId: true,
-      organizationId: true,
+      organization: { select: { name: true } },
       designation: true,
       dateOfJoining: true,
       department: { select: { name: true } },
@@ -366,40 +364,6 @@ exports.getDashboard = async (req, res) => {
 
     cursor.setDate(cursor.getDate() + 1); // move to next day
   }
-  //   const [user, leaveBalances, attendanceSummary] = await Promise.all([
-  //     prisma.user.findUnique({
-  //       where: { id: userId },
-  //       select: {
-  //         name: true,
-  //         empId: true,
-  //         designation: true,
-  //         dateOfJoining: true,
-  //         department: { select: { name: true } },
-  //         shift: { select: { startTime: true, endTime: true } },
-  //         isBiometricRegistered: true,
-  //       },
-  //     }),
-
-  //     // Leave balances with type name
-  //     prisma.leaveBalance.findMany({
-  //       where: { userId },
-  //       include: { leaveType: { select: { name: true } } },
-  //     }),
-
-  //     // All attendance records this year for avg punch times
-  //     prisma.attendance.findMany({
-  //       where: {
-  //         userId,
-  //         date: {
-  //           gte: new Date(`${new Date().getFullYear()}-01-01`),
-  //           lte: new Date(),
-  //         },
-  //       },
-  //       select: { status: true, punchIn: true, punchOut: true },
-  //     }),
-  //   ]);
-
-  // Calculate averages
   const presentDays = attendanceSummary.filter((a) =>
     ["PRESENT", "LATE", "HALF_DAY"].includes(a.status),
   );
@@ -454,18 +418,18 @@ const minutesToTime = (mins) => {
 
 exports.getTodaySchedule = async (req, res) => {
   try {
-    const { userId } = req.body; // from auth middleware
-
+    const userId = req.user.id; // from auth middleware
+    // const { userId } = req.body;
     // Get today's date in YYYY-MM-DD (no time component, matches `date` column type)
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const localDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 
     const schedule = await prisma.schedule.findUnique({
       where: {
         // uses the unique index: Schedule_userId_date_key
         userId_date: {
-          userId: userId,
-          date: today,
+          userId,
+          date: new Date(localDate),
         },
       },
       select: {
@@ -507,8 +471,11 @@ exports.getTodaySchedule = async (req, res) => {
 
 exports.getMonthlyAttendance = async (req, res) => {
   try {
-    const { userId } = req.body; // from auth middleware
+    const userId = req.user.id;
+    //// from auth middleware
+    // const { userId } = req.body; // from auth middleware
     const { month, year } = req.query;
+    console.log(userId);
 
     // Validate query params
     if (!month || !year) {
@@ -554,6 +521,7 @@ exports.getMonthlyAttendance = async (req, res) => {
         date: "asc",
       },
     });
+    console.log(attendanceRecords);
 
     // Build a map of date string -> attendance record
     // So frontend can easily look up any day
@@ -606,7 +574,7 @@ exports.getMonthlyAttendance = async (req, res) => {
 
 exports.markNotificationRead = async (req, res) => {
   try {
-    const { userId } = req.body; // from auth middleware
+    const userId = req.user.id; // from auth middleware
     const { notificationId } = req.params;
 
     // Check if this notification recipient record actually exists for this user
@@ -671,3 +639,339 @@ exports.markNotificationRead = async (req, res) => {
     });
   }
 };
+
+exports.markAllNotificationsAsRead = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    await prisma.notificationRecipient.updateMany({
+      where: { userId, isRead: false },
+      data: { isRead: true },
+    });
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("Error marking all notifications as read:", error);
+    return res.status(500).json({ error: "Failed to mark all as read" });
+  }
+};
+
+exports.getNotifications = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Step 1: Get user's org and department
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { organizationId: true, departmentId: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Step 2: Fetch all unread notifications targeted to this user
+    const recipients = await prisma.notificationRecipient.findMany({
+      where: {
+        userId,
+        isRead: false,
+      },
+      include: {
+        notification: {
+          include: {
+            sender: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: {
+        notification: { createdAt: "desc" },
+      },
+    });
+
+    // Step 3: Filter out drafts and map to clean response
+    const notifications = recipients
+      .filter((r) => !r.notification.isDraft)
+      .map((r) => ({
+        id: r.notification.id,
+        title: r.notification.title,
+        message: r.notification.message,
+        senderName: r.notification.sender.name,
+        createdAt: r.notification.createdAt,
+        isRead: r.isRead,
+      }));
+
+    return res.status(200).json({
+      success: true,
+      data: notifications,
+    });
+  } catch (error) {
+    console.error("Error fetching notifications:", error);
+    return res.status(500).json({ error: "Failed to fetch notifications" });
+  }
+};
+
+const GEO_RADIUS_METERS = 100; // allowed radius from office
+
+// Haversine formula — distance in meters between two lat/lng points
+function haversineDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+exports.markAttendance = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { latitude, longitude } = req.body;
+    const frames = req.files; // multer array: req.files
+
+    // ── Validate inputs ──────────────────────────────────────────────
+    if (!latitude || !longitude) {
+      return res.status(400).json({
+        success: false,
+        message: "Location is required.",
+        gatePassed: 0,
+      });
+    }
+    if (!frames || frames.length < 5) {
+      return res.status(400).json({
+        success: false,
+        message: "Not enough frames captured.",
+        gatePassed: 0,
+      });
+    }
+
+    // ── Fetch user + org location + face embedding ───────────────────
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        organizationId: true,
+        faceEmbedding: true,
+        isBiometricRegistered: true,
+        organization: {
+          select: { latitude: true, longitude: true },
+        },
+      },
+    });
+
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found.", gatePassed: 0 });
+    }
+    if (!user.isBiometricRegistered || !user.faceEmbedding) {
+      return res.status(400).json({
+        success: false,
+        message: "Biometric not registered.",
+        gatePassed: 0,
+      });
+    }
+
+    // ── GATE 1: Geofence check (Express handles this) ────────────────
+    const orgLat = user.organization?.latitude;
+    const orgLng = user.organization?.longitude;
+
+    if (!orgLat || !orgLng) {
+      return res.status(500).json({
+        success: false,
+        message: "Office location not configured.",
+        gatePassed: 0,
+      });
+    }
+
+    const distanceFromOffice = haversineDistance(
+      parseFloat(latitude),
+      parseFloat(longitude),
+      orgLat,
+      orgLng,
+    );
+
+    const isGeofenceValid = distanceFromOffice <= GEO_RADIUS_METERS;
+    if (!isGeofenceValid) {
+      return res.status(200).json({
+        success: false,
+        message: `You are ${Math.round(distanceFromOffice)}m away from the office. Must be within ${GEO_RADIUS_METERS}m.`,
+        gatePassed: 0,
+      });
+    }
+
+    // ── GATE 2 & 3: Forward frames + embedding to FastAPI ────────────
+    const form = new FormData();
+
+    // Append all frames
+    for (const file of frames) {
+      form.append("files", file.buffer, {
+        filename: file.originalname,
+        contentType: "image/jpeg",
+      });
+    }
+
+    // FastAPI /api/attendance/mark also needs user_id but uses local DB
+    // We bypass that — we send the stored embedding directly as JSON
+    // So we call a slightly different flow: liveness + verify separately
+    // Since FastAPI's /api/attendance/mark uses its own DB, we send the
+    // embedding via a custom endpoint. If your FastAPI only has /api/attendance/mark,
+    // append user_id and also send the embedding as a JSON field below.
+    form.append("user_id", userId);
+
+    // Send stored embedding as JSON string so FastAPI can use it directly
+    // (Your FastAPI will need to accept this — see note at bottom of file)
+    form.append(
+      "stored_embedding",
+      JSON.stringify(Array.from(user.faceEmbedding)),
+    );
+    console.log(form);
+
+    let pythonResult;
+    try {
+      const pythonRes = await axios.post(
+        `${PYTHON_SERVICE_URL}/api/attendance/mark`,
+        form,
+        { headers: form.getHeaders(), timeout: 15000 },
+      );
+      pythonResult = pythonRes.data;
+    } catch (pyErr) {
+      console.error("FastAPI error:", pyErr.message);
+      return res.status(502).json({
+        success: false,
+        message: "Biometric service unavailable. Try again.",
+        gatePassed: 1, // geo passed, biometric service failed
+      });
+    }
+
+    // ── GATE 2: Liveness failed ───────────────────────────────────────
+    if (
+      !pythonResult.verified &&
+      pythonResult.message?.toLowerCase().includes("liveness")
+    ) {
+      return res.status(200).json({
+        success: false,
+        message: pythonResult.message,
+        gatePassed: 1,
+      });
+    }
+
+    // ── GATE 3: Face match failed ─────────────────────────────────────
+    if (!pythonResult.verified) {
+      return res.status(200).json({
+        success: false,
+        message:
+          pythonResult.message || "Face did not match. Please try again.",
+        gatePassed: 2,
+      });
+    }
+
+    // ── All gates passed — save attendance record ─────────────────────
+    const today = new Date();
+    const todayDate = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate(),
+    );
+
+    const punchInTime = new Date();
+    const confidence = parseFloat(pythonResult.confidence) || null;
+
+    // Upsert: if already punched in today, update punchOut instead
+    const existing = await prisma.attendance.findUnique({
+      where: { userId_date: { userId, date: todayDate } },
+    });
+
+    if (existing) {
+      // Already punched in — this is a punch out
+      await prisma.attendance.update({
+        where: { userId_date: { userId, date: todayDate } },
+        data: {
+          punchOut: punchInTime,
+          latitude: parseFloat(latitude),
+          longitude: parseFloat(longitude),
+          isGeofenceValid: true,
+          faceMatchScore: confidence,
+          isLivenessVerified: true,
+          updatedAt: new Date(),
+        },
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Punch-out recorded successfully.",
+        confidence: pythonResult.confidence,
+        type: "PUNCH_OUT",
+        gatePassed: 3,
+      });
+    }
+
+    // First punch of the day — determine if PRESENT or LATE
+    // You can add shift logic here if needed; defaulting to PRESENT
+    await prisma.attendance.create({
+      data: {
+        userId,
+        organizationId: user.organizationId,
+        date: todayDate,
+        punchIn: punchInTime,
+        status: "PRESENT",
+        latitude: parseFloat(latitude),
+        longitude: parseFloat(longitude),
+        isGeofenceValid: true,
+        faceMatchScore: confidence,
+        isLivenessVerified: true,
+        spoofAttemptDetected: false,
+        isManualEntry: false,
+        updatedAt: new Date(),
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Attendance marked successfully.",
+      confidence: pythonResult.confidence,
+      type: "PUNCH_IN",
+      gatePassed: 3,
+    });
+  } catch (error) {
+    console.error("Mark attendance error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error.",
+      gatePassed: 0,
+    });
+  }
+};
+
+/*
+ NOTE FOR FASTAPI:
+ ─────────────────
+ Your current FastAPI /api/attendance/mark pulls the stored embedding from
+ its local mock DB using user_id. Since your real embeddings live in Postgres,
+ you have two options:
+
+ Option A (recommended): Add a new FastAPI endpoint /api/attendance/verify
+ that accepts `stored_embedding` as a Form field (JSON string) instead of
+ looking it up locally. Express sends it directly from Prisma.
+
+ Option B: Keep FastAPI as-is but sync embeddings to FastAPI's local DB
+ whenever a user registers biometrics in Express.
+
+ Option A requires this change in FastAPI main.py:
+
+ @app.post("/api/attendance/verify")
+ async def verify_attendance(
+     stored_embedding_json: str = Form(...),
+     files: List[UploadFile] = File(...)
+ ):
+     stored_encoding = np.array(json.loads(stored_embedding_json))
+     frames_bytes = [await f.read() for f in files]
+     captured_encoding, is_live, msg = face_service.analyze_blink_sequence(frames_bytes)
+     if not is_live:
+         return {"verified": False, "message": msg, "confidence": "0%"}
+     is_match, confidence = face_service.verify_user(captured_encoding, stored_encoding)
+     if is_match:
+         return {"verified": True, "confidence": f"{confidence}%"}
+     return {"verified": False, "message": "Biometric Mismatch", "confidence": f"{confidence}%"}
+*/

@@ -3,7 +3,6 @@ import { Plus, Trash2, Bell, Check } from "lucide-react";
 
 export default function NotificationCard({
   notifications,
-  onAdd,
   onDelete,
   onMarkAsRead,
   onMarkAllAsRead, // ✅ New prop to clear everything
@@ -38,13 +37,13 @@ export default function NotificationCard({
               Mark all as read
             </button>
           )}
-          <button
+          {/* <button
             onClick={onAdd}
             className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md transition-colors text-gray-500 dark:text-gray-400"
             title="Simulate new notification"
           >
             <Plus className="w-4 h-4" />
-          </button>
+          </button> */}
         </div>
       </div>
 

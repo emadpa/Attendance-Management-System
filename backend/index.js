@@ -19,7 +19,7 @@ const io = new Server(server, {
   cors: {
     origin: ["http://localhost:5173", "http://localhost:5174"],
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   },
 });
 
@@ -46,7 +46,7 @@ app.use(
   cors({
     origin: ["http://localhost:5173", "http://localhost:5174"],
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   }),
 );
@@ -70,25 +70,12 @@ const manageadminroute = require("./routes/manageadmin");
 const adminattendancecorrectionroute = require("./routes/adminattendancecorrection.js");
 const adminholidayroute = require("./routes/adminholidays.js");
 
+const requireAuth = require("./middleware/auth");
+
 // --- Public Routes ---
 app.use("/api/auth", authRoutes);
 
 // --- Protected Routes (Require valid Cookie/JWT) ---
-const requireAuth = (req, res, next) => {
-  passport.authenticate("jwt", { session: false }, (err, user, info) => {
-    if (err) return next(err);
-
-    if (!user) {
-      return res.status(401).json({
-        error:
-          info?.message || "Your session has expired. Please log in again.",
-      });
-    }
-
-    req.user = user;
-    next();
-  })(req, res, next);
-};
 
 app.use("/api/admin/overview", requireAuth, adminoverviewroute);
 app.use("/api/admin/employees", requireAuth, adminemployeesroute);
@@ -103,7 +90,6 @@ app.use("/api/admin/attendance", requireAuth, adminattendancecorrectionroute);
 app.use("/api/admin/holidays", requireAuth, adminholidayroute);
 
 //EMPLOYEE
-app.use("/api/admin", adminroute);
 app.use("/api/employee", require("./routes/employee"));
 // --- Error Handling ---
 app.use((err, req, res, next) => {
@@ -113,6 +99,6 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(port, () => {
+server.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
