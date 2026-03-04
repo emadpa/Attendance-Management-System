@@ -1,74 +1,120 @@
-import React, { useState } from "react";
-import { Shield, Plus, Trash2, Mail } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import axios from "axios";
+import { Shield, Plus, Trash2, Mail, Loader2 } from "lucide-react";
 import { Modal } from "../shared/Modal";
 import { Input } from "../shared/Input";
 import { Select } from "../shared/Select";
 import { Badge } from "../shared/Badge";
+import { Toast, useToast } from "../shared/Toast";
+import { useAuth } from "../shared/AuthContext"; // ✅ Imported useAuth
 
 export function ManageAdmins() {
-  const [admins, setAdmins] = useState([
-    {
-      id: 1,
-      name: "Primary Owner",
-      email: "admin@company.com",
-      role: "Super Admin",
-      status: "Active",
-    },
-    {
-      id: 2,
-      name: "Sarah Smith",
-      email: "sarah@company.com",
-      role: "HR Manager",
-      status: "Active",
-    },
-    {
-      id: 3,
-      name: "Mike Davis",
-      email: "mike@company.com",
-      role: "IT Admin",
-      status: "Pending Invite",
-    },
-  ]);
+  const { toast, showToast, hideToast } = useToast();
+  const { user } = useAuth(); // ✅ Extract the logged-in user to get the orgName
 
+  const [admins, setAdmins] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const [newAdmin, setNewAdmin] = useState({
     name: "",
     email: "",
-    role: "HR Manager",
+    role: "HR_MANAGER", // Defaults to the Enum string
   });
 
-  const handleInviteAdmin = (e) => {
+  const API_URL = "http://localhost:5000/api/admin/manage-admins";
+
+  // --- Fetch Admins from Database ---
+  const fetchAdmins = async () => {
+    setIsLoading(true);
+    try {
+      const response = await axios.get(API_URL);
+      setAdmins(response.data);
+    } catch (error) {
+      showToast("Failed to load administrators.", "error");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAdmins();
+  }, []);
+
+  // --- Format Enums for the UI ---
+  const formatRoleName = (roleStr) => {
+    return roleStr
+      .split("_")
+      .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
+      .join(" ");
+  };
+
+  // --- Send Invite (Create Admin) ---
+  const handleInviteAdmin = async (e) => {
     e.preventDefault();
     if (!newAdmin.name || !newAdmin.email) return;
 
-    const admin = {
-      id: Date.now(),
-      name: newAdmin.name,
-      email: newAdmin.email,
-      role: newAdmin.role,
-      status: "Pending Invite",
-    };
+    setIsSubmitting(true);
+    try {
+      await axios.post(API_URL, newAdmin);
 
-    setAdmins([...admins, admin]);
-    setIsModalOpen(false);
-    setNewAdmin({ name: "", email: "", role: "HR Manager" });
-    alert(`An invitation link has been sent to ${admin.email}!`);
+      showToast(
+        `An invitation link has been sent to ${newAdmin.email}!`,
+        "success",
+      );
+      setIsModalOpen(false);
+      setNewAdmin({ name: "", email: "", role: "HR_MANAGER" });
+
+      // Refresh list to show the newly invited admin
+      fetchAdmins();
+    } catch (error) {
+      showToast(
+        error.response?.data?.error || "Failed to invite administrator.",
+        "error",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleDelete = (id, role) => {
-    if (role === "Super Admin") {
-      alert("You cannot delete the Super Admin account.");
+  // --- Revoke Access ---
+  const handleDelete = async (id, role) => {
+    if (role === "SUPER_ADMIN") {
+      showToast("You cannot revoke the Super Admin account.", "error");
       return;
     }
+
     if (
       window.confirm("Are you sure you want to revoke this admin's access?")
     ) {
-      setAdmins(admins.filter((admin) => admin.id !== id));
+      try {
+        await axios.delete(`${API_URL}/${id}`);
+        setAdmins(admins.filter((admin) => admin.id !== id));
+        showToast("Administrator access revoked.", "success");
+      } catch (error) {
+        showToast("Failed to revoke access.", "error");
+      }
     }
   };
 
+  // --- Simulate Resending Invite ---
+  const handleResendInvite = (email) => {
+    showToast(`Invitation email resent to ${email}`, "success");
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-64 bg-white rounded-lg border border-gray-200">
+        <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+      </div>
+    );
+  }
+
   return (
-    <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden font-sans">
+    <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden font-sans relative">
+      <Toast {...toast} onClose={hideToast} />
+
       <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50/50">
         <div>
           <h2 className="text-lg font-medium text-gray-900 flex items-center gap-2">
@@ -76,7 +122,9 @@ export function ManageAdmins() {
             Admin Access & Roles
           </h2>
           <p className="text-sm text-gray-500 mt-1">
-            Manage who has access to the LuxeHR dashboard.
+            {/* ✅ Dynamically showing the organization name instead of "LuxeHR" */}
+            Manage who has access to the {user?.orgName || "organization"}{" "}
+            dashboard.
           </p>
         </div>
         <button
@@ -99,6 +147,13 @@ export function ManageAdmins() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
+            {admins.length === 0 && (
+              <tr>
+                <td colSpan="4" className="text-center p-8 text-gray-500">
+                  No administrators found.
+                </td>
+              </tr>
+            )}
             {admins.map((admin) => (
               <tr
                 key={admin.id}
@@ -113,12 +168,12 @@ export function ManageAdmins() {
                 <td className="px-6 py-4">
                   <span
                     className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      admin.role === "Super Admin"
+                      admin.role === "SUPER_ADMIN"
                         ? "bg-purple-100 text-purple-800"
                         : "bg-gray-100 text-gray-800"
                     }`}
                   >
-                    {admin.role}
+                    {formatRoleName(admin.role)}
                   </span>
                 </td>
                 <td className="px-6 py-4">
@@ -132,13 +187,14 @@ export function ManageAdmins() {
                   <div className="flex items-center justify-end gap-3 text-gray-400">
                     {admin.status === "Pending Invite" && (
                       <button
+                        onClick={() => handleResendInvite(admin.email)}
                         className="hover:text-black transition-colors"
                         title="Resend Invite"
                       >
                         <Mail className="w-4 h-4" />
                       </button>
                     )}
-                    {admin.role !== "Super Admin" && (
+                    {admin.role !== "SUPER_ADMIN" && (
                       <button
                         onClick={() => handleDelete(admin.id, admin.role)}
                         className="opacity-0 group-hover:opacity-100 hover:text-red-600 transition-all"
@@ -157,7 +213,10 @@ export function ManageAdmins() {
 
       <Modal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => {
+          setIsModalOpen(false);
+          setNewAdmin({ name: "", email: "", role: "HR_MANAGER" });
+        }}
         title="Invite New Administrator"
         size="md"
       >
@@ -192,11 +251,12 @@ export function ManageAdmins() {
             onChange={(e) => setNewAdmin({ ...newAdmin, role: e.target.value })}
             required
           >
-            <option value="HR Manager">
+            {/* Matches Prisma Schema Enums */}
+            <option value="HR_MANAGER">
               HR Manager (Full Employee Access)
             </option>
-            <option value="IT Admin">IT Admin (System Settings Only)</option>
-            <option value="Viewer">Viewer (Read-Only Access)</option>
+            <option value="IT_ADMIN">IT Admin (System Settings Only)</option>
+            <option value="ADMIN">Admin (Standard Access)</option>
           </Select>
 
           <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
@@ -209,9 +269,11 @@ export function ManageAdmins() {
             </button>
             <button
               type="submit"
-              className="px-6 py-2 bg-black text-white text-sm font-medium rounded-sm hover:opacity-90 transition-opacity"
+              disabled={isSubmitting}
+              className="flex items-center justify-center gap-2 px-6 py-2 bg-black text-white text-sm font-medium rounded-sm hover:opacity-90 transition-opacity disabled:opacity-70"
             >
-              Send Invite
+              {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+              {isSubmitting ? "Sending..." : "Send Invite"}
             </button>
           </div>
         </form>

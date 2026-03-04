@@ -1,0 +1,158 @@
+const express = require("express");
+const { PrismaClient } = require("@prisma/client");
+const router = express.Router();
+const prisma = new PrismaClient();
+
+// GET /api/admin/overview
+router.get("/", async (req, res) => {
+  try {
+    const organizationId = req.user.organizationId;
+
+    // ✅ 1. Get the current Date specifically in IST (Asia/Kolkata)
+    // This safely extracts "YYYY-MM-DD" for India, even if the server is in UTC
+    const todayISTString = new Date().toLocaleDateString("en-CA", {
+      timeZone: "Asia/Kolkata",
+    });
+
+    // ✅ 2. Create a clean Midnight UTC date from that string
+    // Prisma stores @db.Date as YYYY-MM-DDT00:00:00.000Z in the database
+    const targetDate = new Date(`${todayISTString}T00:00:00.000Z`);
+
+    // 3. Fetch EVERYTHING in parallel for maximum speed
+    const [
+      totalEmployees,
+      eligibleForAttendance,
+      presentToday,
+      onLeaveToday,
+      pendingLeaves,
+      pendingTimesheets,
+      recentLeaves,
+      recentAttendances,
+    ] = await Promise.all([
+      // Total active employees
+      prisma.user.count({
+        where: { organizationId, isActive: true, role: "EMPLOYEE" },
+      }),
+      prisma.user.count({
+        where: {
+          organizationId,
+          isActive: true,
+          role: "EMPLOYEE",
+          dateOfJoining: { lte: targetDate },
+        },
+      }),
+      // ✅ 4. FIX: Exactly match the locked targetDate
+      prisma.attendance.count({
+        where: {
+          organizationId,
+          date: targetDate, // Uses the timezone-safe date
+          status: { in: ["PRESENT", "LATE", "HALF_DAY"] },
+        },
+      }),
+      // ✅ 5. FIX: Apply the same locked targetDate to Leave Requests
+      prisma.leaveRequest.count({
+        where: {
+          organizationId,
+          status: "APPROVED",
+          startDate: { lte: targetDate },
+          endDate: { gte: targetDate },
+        },
+      }),
+      // Pending leave requests
+      prisma.leaveRequest.count({
+        where: { organizationId, status: "PENDING" },
+      }),
+      // Missed punches (Timesheet Corrections needed)
+      prisma.attendance.count({
+        where: { organizationId, status: "MISSED_PUNCH" },
+      }),
+      // Last 5 Leave Requests
+      prisma.leaveRequest.findMany({
+        where: { organizationId },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        include: {
+          user: { select: { name: true } },
+          leaveType: { select: { name: true } },
+        },
+      }),
+      // Last 5 Attendances
+      prisma.attendance.findMany({
+        where: { organizationId },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        include: { user: { select: { name: true } } },
+      }),
+    ]);
+
+    // Calculate attendance percentage
+    const expectedToday = totalEmployees - onLeaveToday;
+    const attendanceRate =
+      expectedToday > 0 ? Math.round((presentToday / expectedToday) * 100) : 0;
+
+    // Format Recent Activity Feed
+    let activities = [];
+
+    recentLeaves.forEach((leave) => {
+      activities.push({
+        id: `leave-${leave.id}`,
+        user: leave.user.name,
+        action: `requested ${leave.leaveType.name}`,
+        time: new Date(leave.createdAt).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        route: "/admin/leaves",
+        timestamp: leave.createdAt,
+      });
+    });
+
+    recentAttendances.forEach((att) => {
+      activities.push({
+        id: `att-${att.id}`,
+        user: att.user.name,
+        action: att.status === "LATE" ? "clocked in late" : "clocked in",
+        time: new Date(att.createdAt).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        route: "/admin/attendance",
+        timestamp: att.createdAt,
+      });
+    });
+
+    // Sort combined activities by newest first and take top 4
+    activities.sort((a, b) => b.timestamp - a.timestamp);
+    activities = activities.slice(0, 4);
+
+    // Send data to React
+    return res.status(200).json({
+      snapshot: { totalEmployees, presentToday },
+      stats: [
+        {
+          label: "Company Attendance",
+          value: `${attendanceRate}%`,
+          trend: null,
+          trendUp: true,
+        },
+        {
+          label: "On Leave Today",
+          value: onLeaveToday.toString(),
+          trend: null,
+        },
+        {
+          label: "Pending Requests",
+          value: pendingLeaves.toString(),
+          trend: null,
+        },
+      ],
+      actionCenter: { pendingLeaves, pendingTimesheets },
+      recentActivity: activities,
+    });
+  } catch (error) {
+    console.error("Error fetching overview:", error);
+    res.status(500).json({ message: "Server error fetching overview data" });
+  }
+});
+
+module.exports = router;

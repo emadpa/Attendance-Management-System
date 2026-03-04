@@ -1,11 +1,19 @@
 const passport = require("passport");
 const JwtStrategy = require("passport-jwt").Strategy;
-const ExtractJwt = require("passport-jwt").ExtractJwt;
-const prisma = require("./prisma");
+const prisma = require("../prisma");
+
+// ✅ Extracts the JWT directly from the HTTP-Only cookie
+const cookieExtractor = (req) => {
+  let token = null;
+  if (req && req.cookies) {
+    token = req.cookies["token"];
+  }
+  return token;
+};
 
 const options = {
-  jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-  secretOrKey: process.env.JWT_SECRET,
+  jwtFromRequest: cookieExtractor,
+  secretOrKey: process.env.JWT_SECRET || "your-super-secret-key",
 };
 
 passport.use(
@@ -13,12 +21,32 @@ passport.use(
     try {
       const user = await prisma.user.findUnique({
         where: { id: payload.id },
+        include: {
+          organization: { select: { isActive: true, name: true } },
+        },
       });
 
-      if (user) return done(null, user);
+      if (!user) {
+        return done(null, false, { message: "User not found" });
+      }
 
-      return done(null, false);
+      // ✅ SECURITY: Reject deactivated users instantly
+      if (!user.isActive) {
+        return done(null, false, {
+          message: "This account has been deactivated",
+        });
+      }
+
+      // ✅ SECURITY: Reject users if their organization is suspended
+      if (user.organization && !user.organization.isActive) {
+        return done(null, false, {
+          message: "Organization account is suspended",
+        });
+      }
+
+      return done(null, user);
     } catch (err) {
+      console.error("JWT Authentication Error:", err);
       return done(err, false);
     }
   }),

@@ -51,6 +51,17 @@ enum WorkType {
 }
 
 // --- MODELS ---
+model Holiday {
+  id             String   @id @default(uuid())
+  name           String
+  date           DateTime 
+  organizationId String
+  createdAt      DateTime @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // Prevents adding duplicate holidays on the exact same day for the same org
+  @@unique([date, organizationId])
+}
 
 model Holiday {
   id             String   @id @default(uuid())
@@ -88,6 +99,7 @@ model Organization {
   attendances           Attendance[]
   leaveRequests         LeaveRequest[]
   leaveTypes            LeaveType[]
+  holidays         Holiday[]
 }
 
 model User {

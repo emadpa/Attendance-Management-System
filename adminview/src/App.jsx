@@ -18,6 +18,9 @@ import { AdminLayout } from "./components/Admin/AdminLayout";
 import { DepartmentManagement } from "./components/Admin/DepartmentManagement";
 import { ManageAdmins } from "./components/Admin/ManageAdmins"; // ✅ IMPORTED THIS
 import { OrganizationSettings } from "./components/Admin/OrganizationSettings";
+import { AdminAttendanceCorrection } from "./components/Admin/AdminAttendanceCorrection";
+import { AdminShifts } from "./components/Admin/AdminShifts";
+import { AdminReports } from "./components/Admin/AdminReports";
 
 // 1. Protects dashboard pages (Only logged-in users allowed)
 const ProtectedRoute = () => {
@@ -60,7 +63,12 @@ function App() {
               <Route index element={<AdminOverview />} />
               <Route path="leaves" element={<AdminLeaves />} />
               <Route path="employees" element={<AdminEmployees />} />
-
+              <Route path="reports" element={<AdminReports />} />
+              <Route
+                path="attendance"
+                element={<AdminAttendanceCorrection />}
+              />
+              <Route path="shifts" element={<AdminShifts />} />
               {/* Departments Route */}
               <Route
                 path="departments"
