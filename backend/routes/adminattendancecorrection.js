@@ -31,12 +31,13 @@ router.get("/", async (req, res) => {
 });
 
 // PUT /api/admin/attendance/:id/correct
+// PUT /api/admin/attendance/:id/correct
 router.put("/:id/correct", async (req, res) => {
   try {
     const recordId = req.params.id;
-    const { punchOutTime, reason } = req.body; // e.g. "17:00"
+    const { punchOutTime, reason } = req.body;
 
-    // 1. Fetch the existing record to get its base date
+    // 1. Fetch the existing record
     const existingRecord = await prisma.attendance.findUnique({
       where: { id: recordId },
     });
@@ -45,11 +46,9 @@ router.put("/:id/correct", async (req, res) => {
       return res.status(404).json({ error: "Record not found" });
     }
 
-    // 2. Parse the punchOut time string and combine it with the record's date
+    // 2. Parse the punchOut time
     const recordDate = new Date(existingRecord.date);
     const [hours, minutes] = punchOutTime.split(":");
-
-    // Create the exact Date object for punchOut
     const punchOutDate = new Date(recordDate);
     punchOutDate.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
 
@@ -60,12 +59,18 @@ router.put("/:id/correct", async (req, res) => {
         punchOut: punchOutDate,
         status: "PRESENT",
         isManualEntry: true,
-        // If you have a field for audit reasons, save `reason` there!
       },
       include: {
         user: { select: { name: true, empId: true } },
       },
     });
+
+    // 🚨 THE ONLY NEW BACKEND CODE NEEDED 🚨
+    // Grab Socket.IO and broadcast the update to the React frontend instantly!
+    const io = req.app.get("io");
+    if (io) {
+      io.emit("attendance_updated", updatedRecord);
+    }
 
     res.json(updatedRecord);
   } catch (error) {

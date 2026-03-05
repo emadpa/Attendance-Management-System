@@ -9,13 +9,11 @@ router.get("/", async (req, res) => {
     const organizationId = req.user.organizationId;
 
     // ✅ 1. Get the current Date specifically in IST (Asia/Kolkata)
-    // This safely extracts "YYYY-MM-DD" for India, even if the server is in UTC
     const todayISTString = new Date().toLocaleDateString("en-CA", {
       timeZone: "Asia/Kolkata",
     });
 
     // ✅ 2. Create a clean Midnight UTC date from that string
-    // Prisma stores @db.Date as YYYY-MM-DDT00:00:00.000Z in the database
     const targetDate = new Date(`${todayISTString}T00:00:00.000Z`);
 
     // 3. Fetch EVERYTHING in parallel for maximum speed
@@ -28,11 +26,14 @@ router.get("/", async (req, res) => {
       pendingTimesheets,
       recentLeaves,
       recentAttendances,
+      holidayToday,
+      scheduledOffToday,
     ] = await Promise.all([
       // Total active employees
       prisma.user.count({
         where: { organizationId, isActive: true, role: "EMPLOYEE" },
       }),
+      // Eligible employees (joined on or before today)
       prisma.user.count({
         where: {
           organizationId,
@@ -41,15 +42,15 @@ router.get("/", async (req, res) => {
           dateOfJoining: { lte: targetDate },
         },
       }),
-      // ✅ 4. FIX: Exactly match the locked targetDate
+      // Present today
       prisma.attendance.count({
         where: {
           organizationId,
-          date: targetDate, // Uses the timezone-safe date
+          date: targetDate,
           status: { in: ["PRESENT", "LATE", "HALF_DAY"] },
         },
       }),
-      // ✅ 5. FIX: Apply the same locked targetDate to Leave Requests
+      // On approved leave today
       prisma.leaveRequest.count({
         where: {
           organizationId,
@@ -83,12 +84,40 @@ router.get("/", async (req, res) => {
         take: 5,
         include: { user: { select: { name: true } } },
       }),
+      // 🚨 NEW: Check if today is a public holiday
+      prisma.holiday.findFirst({
+        where: {
+          organizationId: organizationId,
+          date: targetDate,
+        },
+      }),
+      prisma.schedule.count({
+        where: {
+          organizationId: organizationId,
+          date: targetDate,
+          workType: "OFF", // Uses your new WorkType enum!
+        },
+      }),
     ]);
 
-    // Calculate attendance percentage
-    const expectedToday = totalEmployees - onLeaveToday;
-    const attendanceRate =
-      expectedToday > 0 ? Math.round((presentToday / expectedToday) * 100) : 0;
+    // 🚨 NEW LOGIC: Calculate expected workforce and smartly handle holidays
+    let expectedToday =
+      eligibleForAttendance - onLeaveToday - scheduledOffToday;
+    let attendanceDisplayValue = "0%";
+    let isTrendUp = false;
+    let trendText = "Today";
+
+    if (holidayToday) {
+      // 1. If it is a holiday, override the math completely
+      attendanceDisplayValue = "Holiday";
+      expectedToday = 0;
+      trendText = null; // Hide the "Today" subtext on holidays for a cleaner UI
+    } else if (expectedToday > 0) {
+      // 2. Normal working day math
+      const attendanceRate = Math.round((presentToday / expectedToday) * 100);
+      attendanceDisplayValue = `${attendanceRate}%`;
+      isTrendUp = attendanceRate >= 80; // Green arrow if 80% or higher
+    }
 
     // Format Recent Activity Feed
     let activities = [];
@@ -131,9 +160,9 @@ router.get("/", async (req, res) => {
       stats: [
         {
           label: "Company Attendance",
-          value: `${attendanceRate}%`,
-          trend: null,
-          trendUp: true,
+          value: attendanceDisplayValue, // ✅ Now uses "95%" OR "Holiday"
+          trend: trendText,
+          trendUp: isTrendUp,
         },
         {
           label: "On Leave Today",
@@ -148,6 +177,7 @@ router.get("/", async (req, res) => {
       ],
       actionCenter: { pendingLeaves, pendingTimesheets },
       recentActivity: activities,
+      chartData: [],
     });
   } catch (error) {
     console.error("Error fetching overview:", error);

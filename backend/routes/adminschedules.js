@@ -12,7 +12,7 @@ const parseDate = (dateStr) => new Date(`${dateStr}T00:00:00Z`);
 router.get("/", async (req, res) => {
   try {
     const { startDate } = req.query;
-    const orgId = req.user.organizationId; // Real Org ID from Passport
+    const orgId = req.user.organizationId;
 
     if (!startDate)
       return res.status(400).json({ error: "startDate is required" });
@@ -28,26 +28,22 @@ router.get("/", async (req, res) => {
       weekDates.push(d.toISOString().split("T")[0]);
     }
 
-    // ✅ 1. Fetch ALL departments (Even empty ones!)
     const allDepartments = await prisma.department.findMany({
       where: { organizationId: orgId },
       orderBy: { name: "asc" },
     });
 
-    // Create the grouped object with every single department
     const groupedSchedules = {};
     allDepartments.forEach((dept) => {
       groupedSchedules[dept.name] = [];
     });
-    groupedSchedules["Unassigned"] = []; // Always add a fallback
+    groupedSchedules["Unassigned"] = [];
 
-    // 2. Fetch all active employees
     const users = await prisma.user.findMany({
       where: { organizationId: orgId, role: "EMPLOYEE", isActive: true },
       include: { department: true, shift: true },
     });
 
-    // 3. Fetch custom schedule overrides for this week
     const customSchedules = await prisma.schedule.findMany({
       where: {
         organizationId: orgId,
@@ -61,11 +57,9 @@ router.get("/", async (req, res) => {
       scheduleMap[`${sch.userId}_${dateStr}`] = sch;
     });
 
-    // 4. Fill the grouped structure with employees
     users.forEach((user) => {
       const deptName = user.department?.name || "Unassigned";
 
-      // Safety check in case a department was deleted but user still has the ID
       if (!groupedSchedules[deptName]) groupedSchedules[deptName] = [];
 
       const userWeek = weekDates.map((dateStr) => {
@@ -81,7 +75,7 @@ router.get("/", async (req, res) => {
               customSch.workType === "OFF"
                 ? "Off"
                 : `${customSch.startTime} - ${customSch.endTime}`,
-            tasks: customSch.tasks || [],
+            tasks: customSch.tasks || [], // ✅ Returns your new rich JSON format perfectly
           };
         }
 
@@ -116,7 +110,6 @@ router.get("/", async (req, res) => {
       });
     });
 
-    // Only send departments back if we successfully built the groupedSchedules object
     const departments = Object.keys(groupedSchedules);
 
     return res.status(200).json({ schedules: groupedSchedules, departments });
@@ -125,23 +118,24 @@ router.get("/", async (req, res) => {
     return res.status(500).json({ error: "Failed to fetch schedules" });
   }
 });
+
+// ==========================================
+// POST /api/admin/schedules
 // ==========================================
 router.post("/", async (req, res) => {
   try {
-    const { updates } = req.body; // Array of cells that were changed
+    const { updates } = req.body;
     const orgId = req.user.organizationId;
 
     if (!updates || !Array.isArray(updates)) {
       return res.status(400).json({ error: "Invalid updates format" });
     }
 
-    // Use Prisma Transactions to efficiently upsert all changes
     const transactions = updates.map((update) => {
       const typeMap = { work: "OFFICE", wfh: "WFH", off: "OFF" };
       let startTime = null,
         endTime = null;
 
-      // Extract hours if it's a working day
       if (update.type !== "off" && update.label.includes("-")) {
         [startTime, endTime] = update.label.split("-").map((str) => str.trim());
       }
@@ -157,7 +151,7 @@ router.post("/", async (req, res) => {
           workType: typeMap[update.type],
           startTime,
           endTime,
-          tasks: update.tasks || [],
+          tasks: update.tasks || [], // ✅ Safely inserts the rich JSON array
         },
         create: {
           organizationId: orgId,
@@ -166,7 +160,7 @@ router.post("/", async (req, res) => {
           workType: typeMap[update.type],
           startTime,
           endTime,
-          tasks: update.tasks || [],
+          tasks: update.tasks || [], // ✅ Safely inserts the rich JSON array
         },
       });
     });
