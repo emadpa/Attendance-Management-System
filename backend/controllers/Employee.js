@@ -295,6 +295,7 @@ exports.getDashboard = async (req, res) => {
     select: {
       name: true,
       empId: true,
+      organizationId:true,
       organization: { select: { name: true } },
       designation: true,
       dateOfJoining: true,
@@ -307,13 +308,15 @@ exports.getDashboard = async (req, res) => {
     where: { userId },
     include: { leaveType: { select: { name: true } } },
   });
+  const endOfToday = new Date();
+endOfToday.setHours(23, 59, 59, 999);
 
   const attendanceSummary = await prisma.attendance.findMany({
     where: {
       userId,
       date: {
         gte: new Date(`${new Date().getFullYear()}-01-01`),
-        lte: new Date(),
+        lte: endOfToday,
       },
     },
     select: { status: true, punchIn: true, punchOut: true },
@@ -710,7 +713,7 @@ exports.getNotifications = async (req, res) => {
   }
 };
 
-const GEO_RADIUS_METERS = 100; // allowed radius from office
+const GEO_RADIUS_METERS = 10000; // allowed radius from office
 
 // Haversine formula — distance in meters between two lat/lng points
 function haversineDistance(lat1, lon1, lat2, lon2) {
@@ -746,6 +749,7 @@ exports.markAttendance = async (req, res) => {
       });
     }
 
+    console.log(userId);
     // ── Fetch user + org location + face embedding ───────────────────
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -759,6 +763,7 @@ exports.markAttendance = async (req, res) => {
         },
       },
     });
+    console.log(user);
 
     if (!user) {
       return res
@@ -818,15 +823,15 @@ exports.markAttendance = async (req, res) => {
     // Since FastAPI's /api/attendance/mark uses its own DB, we send the
     // embedding via a custom endpoint. If your FastAPI only has /api/attendance/mark,
     // append user_id and also send the embedding as a JSON field below.
-    form.append("user_id", userId);
+    // form.append("user_id", userId);
 
     // Send stored embedding as JSON string so FastAPI can use it directly
     // (Your FastAPI will need to accept this — see note at bottom of file)
     form.append(
-      "stored_embedding",
+      "stored_embedding_json",
       JSON.stringify(Array.from(user.faceEmbedding)),
     );
-    console.log(form);
+    // console.log(form);
 
     let pythonResult;
     try {
@@ -868,12 +873,14 @@ exports.markAttendance = async (req, res) => {
     }
 
     // ── All gates passed — save attendance record ─────────────────────
-    const today = new Date();
-    const todayDate = new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      today.getDate(),
-    );
+  const today = new Date();
+
+// ✅ Build the date in UTC so there's no offset shift
+const todayDate = new Date(Date.UTC(
+  today.getFullYear(),
+  today.getMonth(),
+  today.getDate()
+));
 
     const punchInTime = new Date();
     const confidence = parseFloat(pythonResult.confidence) || null;
@@ -944,34 +951,3 @@ exports.markAttendance = async (req, res) => {
   }
 };
 
-/*
- NOTE FOR FASTAPI:
- ─────────────────
- Your current FastAPI /api/attendance/mark pulls the stored embedding from
- its local mock DB using user_id. Since your real embeddings live in Postgres,
- you have two options:
-
- Option A (recommended): Add a new FastAPI endpoint /api/attendance/verify
- that accepts `stored_embedding` as a Form field (JSON string) instead of
- looking it up locally. Express sends it directly from Prisma.
-
- Option B: Keep FastAPI as-is but sync embeddings to FastAPI's local DB
- whenever a user registers biometrics in Express.
-
- Option A requires this change in FastAPI main.py:
-
- @app.post("/api/attendance/verify")
- async def verify_attendance(
-     stored_embedding_json: str = Form(...),
-     files: List[UploadFile] = File(...)
- ):
-     stored_encoding = np.array(json.loads(stored_embedding_json))
-     frames_bytes = [await f.read() for f in files]
-     captured_encoding, is_live, msg = face_service.analyze_blink_sequence(frames_bytes)
-     if not is_live:
-         return {"verified": False, "message": msg, "confidence": "0%"}
-     is_match, confidence = face_service.verify_user(captured_encoding, stored_encoding)
-     if is_match:
-         return {"verified": True, "confidence": f"{confidence}%"}
-     return {"verified": False, "message": "Biometric Mismatch", "confidence": f"{confidence}%"}
-*/
