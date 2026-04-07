@@ -1,7 +1,0 @@
-fastapi
-uvicorn
-python-multipart
-face_recognition
-opencv-python
-scipy
-ultralytics

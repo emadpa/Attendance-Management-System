@@ -10,25 +10,22 @@ import {
   X,
   Loader2,
   Search,
-} from "lucide-react"; // ✅ Added Search
+  Clock,
+  AlignLeft,
+} from "lucide-react";
 
 export function AdminSchedules() {
   const { toast, showToast, hideToast } = useToast();
 
-  // Real Data States
   const [schedules, setSchedules] = useState({});
   const [teams, setTeams] = useState([]);
   const [selectedTeam, setSelectedTeam] = useState("");
   const [isLoading, setIsLoading] = useState(true);
 
-  // UI States
   const [currentWeekOffset, setCurrentWeekOffset] = useState(0);
   const [editingCell, setEditingCell] = useState(null);
-
-  // ✅ NEW: Search State
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Tracker for modified cells to send to the backend
   const [changedCells, setChangedCells] = useState({});
   const hasUnsavedChanges = Object.keys(changedCells).length > 0;
 
@@ -37,7 +34,7 @@ export function AdminSchedules() {
   // --- Date Math Helpers ---
   const getMondayOfOffset = (offset) => {
     const d = new Date();
-    const day = d.getDay() || 7; // Convert Sun (0) to 7
+    const day = d.getDay() || 7;
     d.setDate(d.getDate() - day + 1 + offset * 7);
     const offsetDate = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
     return offsetDate.toISOString().split("T")[0];
@@ -91,7 +88,9 @@ export function AdminSchedules() {
     setIsLoading(true);
     try {
       const mondayDate = getMondayOfOffset(currentWeekOffset);
-      const response = await axios.get(`${API_URL}?startDate=${mondayDate}`);
+      const response = await axios.get(`${API_URL}?startDate=${mondayDate}`, {
+        withCredentials: true,
+      });
 
       setSchedules(response.data.schedules);
       setTeams(response.data.departments);
@@ -110,7 +109,6 @@ export function AdminSchedules() {
 
   useEffect(() => {
     fetchSchedules();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentWeekOffset]);
 
   // --- Local UI Update & Change Tracking ---
@@ -133,7 +131,7 @@ export function AdminSchedules() {
   const handlePublish = async () => {
     try {
       const updates = Object.values(changedCells);
-      await axios.post(API_URL, { updates });
+      await axios.post(API_URL, { updates }, { withCredentials: true });
 
       setChangedCells({});
       setEditingCell(null);
@@ -151,7 +149,6 @@ export function AdminSchedules() {
     }
   };
 
-  // ✅ NEW: Filter the active team's employees based on the search query
   const filteredEmployees = (schedules[selectedTeam] || []).filter((emp) =>
     emp.name.toLowerCase().includes(searchQuery.toLowerCase()),
   );
@@ -177,7 +174,6 @@ export function AdminSchedules() {
         {/* Toolbar */}
         <div className="p-4 sm:p-6 border-b border-gray-200 flex flex-col sm:flex-row justify-between items-start sm:items-center bg-gray-50/50 gap-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full sm:w-auto">
-            {/* ✅ NEW: Search Bar */}
             <div className="relative w-full sm:w-56">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
@@ -189,12 +185,11 @@ export function AdminSchedules() {
               />
             </div>
 
-            {/* Team Selector */}
             <select
               value={selectedTeam}
               onChange={(e) => {
                 setSelectedTeam(e.target.value);
-                setSearchQuery(""); // Clear search when switching teams
+                setSearchQuery("");
               }}
               className="px-3 py-2 border border-gray-200 rounded-sm text-sm font-serif bg-white min-w-[150px]"
             >
@@ -208,7 +203,6 @@ export function AdminSchedules() {
               ))}
             </select>
 
-            {/* Week Navigator */}
             <div className="flex gap-1 bg-white border border-gray-200 rounded p-1">
               <button
                 onClick={() => setCurrentWeekOffset(currentWeekOffset - 1)}
@@ -298,7 +292,6 @@ export function AdminSchedules() {
                 </tr>
               )}
               {filteredEmployees.map((emp) => {
-                // ✅ VITAL FIX: Find the original index so `updateSchedule` edits the correct person
                 const originalEmpIdx = schedules[selectedTeam].findIndex(
                   (e) => e.userId === emp.userId,
                 );
@@ -369,7 +362,7 @@ export function AdminSchedules() {
         </div>
       </div>
 
-      {/* Detail Modal */}
+      {/* --- DETAIL MODAL --- */}
       <AnimatePresence>
         {editingCell && (
           <>
@@ -386,7 +379,7 @@ export function AdminSchedules() {
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none p-4"
             >
-              <div className="bg-white rounded-lg shadow-2xl p-6 w-full max-w-lg pointer-events-auto max-h-[90vh] overflow-y-auto">
+              <div className="bg-white rounded-lg shadow-2xl p-6 w-full max-w-xl pointer-events-auto max-h-[90vh] overflow-y-auto">
                 <div className="flex justify-between items-center mb-6">
                   <div>
                     <h3 className="text-lg font-serif font-medium">
@@ -431,7 +424,12 @@ export function AdminSchedules() {
                             );
                             setEditingCell({ ...editingCell, data: newVal });
                           }}
-                          className={`py-2 text-sm border rounded-sm capitalize ${schedules[selectedTeam][editingCell.empIdx].schedule[editingCell.dayIdx].type === type ? "bg-black text-white border-black" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`}
+                          className={`py-2 text-sm border rounded-sm capitalize ${
+                            schedules[selectedTeam][editingCell.empIdx]
+                              .schedule[editingCell.dayIdx].type === type
+                              ? "bg-black text-white border-black"
+                              : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                          }`}
                         >
                           {type === "wfh" ? "Work from Home" : type}
                         </button>
@@ -472,7 +470,7 @@ export function AdminSchedules() {
                       <div className="border-t border-gray-100 pt-6">
                         <div className="flex justify-between items-center mb-4">
                           <label className="block text-xs font-medium uppercase tracking-wider text-gray-500">
-                            Hourly Tasks / Meetings
+                            Daily Tasks / Schedule
                           </label>
                           <button
                             onClick={() => {
@@ -484,7 +482,13 @@ export function AdminSchedules() {
                                   .schedule[editingCell.dayIdx],
                                 tasks: [
                                   ...currentTasks,
-                                  { id: Date.now(), time: "", title: "" },
+                                  {
+                                    id: Date.now(),
+                                    time: "09:00",
+                                    title: "",
+                                    duration: 30,
+                                    description: "",
+                                  },
                                 ],
                               };
                               updateSchedule(
@@ -493,67 +497,21 @@ export function AdminSchedules() {
                                 newVal,
                               );
                             }}
-                            className="text-xs bg-black text-white px-2 py-1 rounded-sm hover:opacity-90"
+                            className="text-xs bg-black text-white px-3 py-1.5 rounded-sm hover:opacity-90 transition-opacity"
                           >
                             + Add Task
                           </button>
                         </div>
 
-                        <div className="space-y-3">
+                        <div className="space-y-4">
                           {(
                             schedules[selectedTeam][editingCell.empIdx]
                               .schedule[editingCell.dayIdx].tasks || []
                           ).map((task, idx) => (
                             <div
                               key={task.id}
-                              className="flex gap-2 items-start"
+                              className="p-4 border border-gray-200 rounded-md bg-gray-50/50 space-y-3 relative group"
                             >
-                              <input
-                                placeholder="10:00 - 11:00"
-                                value={task.time}
-                                onChange={(e) => {
-                                  const tasks = [
-                                    ...(schedules[selectedTeam][
-                                      editingCell.empIdx
-                                    ].schedule[editingCell.dayIdx].tasks || []),
-                                  ];
-                                  tasks[idx].time = e.target.value;
-                                  updateSchedule(
-                                    editingCell.empIdx,
-                                    editingCell.dayIdx,
-                                    {
-                                      ...schedules[selectedTeam][
-                                        editingCell.empIdx
-                                      ].schedule[editingCell.dayIdx],
-                                      tasks,
-                                    },
-                                  );
-                                }}
-                                className="w-24 px-2 py-2 border border-gray-200 rounded-sm text-xs font-mono focus:border-black focus:outline-none"
-                              />
-                              <input
-                                placeholder="Task description..."
-                                value={task.title}
-                                onChange={(e) => {
-                                  const tasks = [
-                                    ...(schedules[selectedTeam][
-                                      editingCell.empIdx
-                                    ].schedule[editingCell.dayIdx].tasks || []),
-                                  ];
-                                  tasks[idx].title = e.target.value;
-                                  updateSchedule(
-                                    editingCell.empIdx,
-                                    editingCell.dayIdx,
-                                    {
-                                      ...schedules[selectedTeam][
-                                        editingCell.empIdx
-                                      ].schedule[editingCell.dayIdx],
-                                      tasks,
-                                    },
-                                  );
-                                }}
-                                className="flex-1 px-2 py-2 border border-gray-200 rounded-sm text-xs focus:border-black focus:outline-none"
-                              />
                               <button
                                 onClick={() => {
                                   const tasks = (
@@ -571,10 +529,144 @@ export function AdminSchedules() {
                                     },
                                   );
                                 }}
-                                className="p-2 text-gray-400 hover:text-red-500"
+                                className="absolute top-2 right-2 p-1 text-gray-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                                title="Delete Task"
                               >
                                 <X className="w-4 h-4" />
                               </button>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                {/* Time Input */}
+                                <div className="col-span-1">
+                                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">
+                                    Time
+                                  </label>
+                                  <div className="relative">
+                                    <Clock className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                                    <input
+                                      type="time"
+                                      value={task.time}
+                                      onChange={(e) => {
+                                        const tasks = [
+                                          ...schedules[selectedTeam][
+                                            editingCell.empIdx
+                                          ].schedule[editingCell.dayIdx].tasks,
+                                        ];
+                                        tasks[idx].time = e.target.value;
+                                        updateSchedule(
+                                          editingCell.empIdx,
+                                          editingCell.dayIdx,
+                                          {
+                                            ...schedules[selectedTeam][
+                                              editingCell.empIdx
+                                            ].schedule[editingCell.dayIdx],
+                                            tasks,
+                                          },
+                                        );
+                                      }}
+                                      className="w-full pl-8 pr-2 py-1.5 border border-gray-200 rounded-sm text-sm font-mono focus:border-black focus:outline-none"
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Duration Input */}
+                                <div className="col-span-1">
+                                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">
+                                    Duration (Mins)
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min="5"
+                                    step="5"
+                                    value={task.duration}
+                                    onChange={(e) => {
+                                      const tasks = [
+                                        ...schedules[selectedTeam][
+                                          editingCell.empIdx
+                                        ].schedule[editingCell.dayIdx].tasks,
+                                      ];
+                                      tasks[idx].duration =
+                                        parseInt(e.target.value) || 0;
+                                      updateSchedule(
+                                        editingCell.empIdx,
+                                        editingCell.dayIdx,
+                                        {
+                                          ...schedules[selectedTeam][
+                                            editingCell.empIdx
+                                          ].schedule[editingCell.dayIdx],
+                                          tasks,
+                                        },
+                                      );
+                                    }}
+                                    className="w-full px-3 py-1.5 border border-gray-200 rounded-sm text-sm focus:border-black focus:outline-none"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Title Input */}
+                              <div>
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">
+                                  Task Title
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder="e.g. Client Meeting"
+                                  value={task.title}
+                                  onChange={(e) => {
+                                    const tasks = [
+                                      ...schedules[selectedTeam][
+                                        editingCell.empIdx
+                                      ].schedule[editingCell.dayIdx].tasks,
+                                    ];
+                                    tasks[idx].title = e.target.value;
+                                    updateSchedule(
+                                      editingCell.empIdx,
+                                      editingCell.dayIdx,
+                                      {
+                                        ...schedules[selectedTeam][
+                                          editingCell.empIdx
+                                        ].schedule[editingCell.dayIdx],
+                                        tasks,
+                                      },
+                                    );
+                                  }}
+                                  className="w-full px-3 py-1.5 border border-gray-200 rounded-sm text-sm focus:border-black focus:outline-none font-medium"
+                                />
+                              </div>
+
+                              {/* Description Input */}
+                              <div>
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">
+                                  Details (Optional)
+                                </label>
+                                <div className="relative">
+                                  <AlignLeft className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-gray-400" />
+                                  <textarea
+                                    placeholder="Add any specific notes or instructions..."
+                                    value={task.description}
+                                    onChange={(e) => {
+                                      const tasks = [
+                                        ...schedules[selectedTeam][
+                                          editingCell.empIdx
+                                        ].schedule[editingCell.dayIdx].tasks,
+                                      ];
+                                      tasks[idx].description = e.target.value;
+                                      updateSchedule(
+                                        editingCell.empIdx,
+                                        editingCell.dayIdx,
+                                        {
+                                          ...schedules[selectedTeam][
+                                            editingCell.empIdx
+                                          ].schedule[editingCell.dayIdx],
+                                          tasks,
+                                        },
+                                      );
+                                    }}
+                                    rows={2}
+                                    className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-sm text-sm focus:border-black focus:outline-none resize-none"
+                                  />
+                                </div>
+                              </div>
                             </div>
                           ))}
                           {(!schedules[selectedTeam][editingCell.empIdx]
@@ -582,8 +674,8 @@ export function AdminSchedules() {
                             schedules[selectedTeam][editingCell.empIdx]
                               .schedule[editingCell.dayIdx].tasks.length ===
                               0) && (
-                            <div className="text-xs text-gray-400 text-center py-4 bg-gray-50 rounded-sm">
-                              No tasks added for this day.
+                            <div className="text-xs text-gray-400 text-center py-6 border border-dashed border-gray-200 rounded-sm">
+                              No tasks assigned for this shift yet.
                             </div>
                           )}
                         </div>

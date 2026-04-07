@@ -713,7 +713,7 @@ exports.getNotifications = async (req, res) => {
   }
 };
 
-const GEO_RADIUS_METERS = 10000; // allowed radius from office
+const GEO_RADIUS_METERS = 500; // allowed radius from office
 
 // Haversine formula — distance in meters between two lat/lng points
 function haversineDistance(lat1, lon1, lat2, lon2) {
@@ -781,6 +781,7 @@ exports.markAttendance = async (req, res) => {
     // ── GATE 1: Geofence check (Express handles this) ────────────────
     const orgLat = user.organization?.latitude;
     const orgLng = user.organization?.longitude;
+    console.log("Org location:", orgLat, orgLng);
 
     if (!orgLat || !orgLng) {
       return res.status(500).json({
