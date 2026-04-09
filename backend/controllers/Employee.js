@@ -778,6 +778,7 @@ exports.getDashboard = async (req, res) => {
     select: {
       name: true,
       empId: true,
+      organizationId: true,
       organization: { select: { name: true } },
       designation: true,
       dateOfJoining: true,
@@ -790,13 +791,15 @@ exports.getDashboard = async (req, res) => {
     where: { userId },
     include: { leaveType: { select: { name: true } } },
   });
+  const endOfToday = new Date();
+  endOfToday.setHours(23, 59, 59, 999);
 
   const attendanceSummary = await prisma.attendance.findMany({
     where: {
       userId,
       date: {
         gte: new Date(`${new Date().getFullYear()}-01-01`),
-        lte: new Date(),
+        lte: endOfToday,
       },
     },
     select: { status: true, punchIn: true, punchOut: true },
@@ -1781,7 +1784,7 @@ exports.getNotifications = async (req, res) => {
   }
 };
 
-const GEO_RADIUS_METERS = 100; // allowed radius from office
+const GEO_RADIUS_METERS = 500; // allowed radius from office
 
 // Haversine formula — distance in meters between two lat/lng points
 function haversineDistance(lat1, lon1, lat2, lon2) {
@@ -1817,6 +1820,7 @@ exports.markAttendance = async (req, res) => {
       });
     }
 
+    console.log(userId);
     // ── Fetch user + org location + face embedding ───────────────────
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -1830,6 +1834,7 @@ exports.markAttendance = async (req, res) => {
         },
       },
     });
+    console.log(user);
 
     if (!user) {
       return res
@@ -1847,6 +1852,7 @@ exports.markAttendance = async (req, res) => {
     // ── GATE 1: Geofence check (Express handles this) ────────────────
     const orgLat = user.organization?.latitude;
     const orgLng = user.organization?.longitude;
+    console.log("Org location:", orgLat, orgLng);
 
     if (!orgLat || !orgLng) {
       return res.status(500).json({
@@ -1889,14 +1895,15 @@ exports.markAttendance = async (req, res) => {
     // Since FastAPI's /api/attendance/mark uses its own DB, we send the
     // embedding via a custom endpoint. If your FastAPI only has /api/attendance/mark,
     // append user_id and also send the embedding as a JSON field below.
-    form.append("user_id", userId);
+    // form.append("user_id", userId);
 
     // Send stored embedding as JSON string so FastAPI can use it directly
     // (Your FastAPI will need to accept this — see note at bottom of file)
     form.append(
-      "stored_embedding",
+      "stored_embedding_json",
       JSON.stringify(Array.from(user.faceEmbedding)),
     );
+    // console.log(form);
     // console.log(form);
 
     let pythonResult;
