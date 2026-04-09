@@ -17,7 +17,7 @@ const sendTokenResponse = (res, user, token) => {
     // No maxAge = Session Cookie!
   });
 
-  return res.json({
+  const response = {
     user: {
       id: user.id,
       email: user.email,
@@ -25,7 +25,11 @@ const sendTokenResponse = (res, user, token) => {
       role: user.role,
       orgName: user.organization?.name,
     },
-  });
+  };
+  if (user.role === "EMPLOYEE" && !user.isBiometricRegistered) {
+    response.requiresBiometric = true;
+  }
+  return res.json(response);
 };
 
 router.post("/register", async (req, res) => {
@@ -75,36 +79,70 @@ router.post("/register", async (req, res) => {
   }
 });
 
+// router.post("/login", async (req, res) => {
+//   try {
+//     const { email, password } = req.body;
+
+//     const user = await prisma.user.findUnique({
+//       where: { email },
+//       include: { organization: true },
+//     });
+
+//     if (!user)
+//       return res.status(400).json({ message: "Invalid email or password" });
+//     if (!user.isActive)
+//       return res
+//         .status(403)
+//         .json({ message: "Your account has been deactivated" });
+//     if (user.organization && !user.organization.isActive)
+//       return res
+//         .status(403)
+//         .json({ message: "Organization account is suspended" });
+
+//     const isMatch = await bcrypt.compare(password, user.password);
+//     if (!isMatch)
+//       return res.status(400).json({ message: "Invalid email or password" });
+
+//     const payload = { id: user.id, role: user.role };
+//     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: "1d" });
+
+//     sendTokenResponse(res, user, token);
+//   } catch (error) {
+//     res.status(500).json({ message: "Server error during login" });
+//   }
+// });
+
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const user = await prisma.user.findUnique({
+    if (!password || !email) {
+      return res.status(400).json({ message: "Credentials required" });
+    }
+
+    const user = await prisma.user.findFirst({
       where: { email },
-      include: { organization: true },
+      include: {
+        organization: true,
+      },
     });
 
-    if (!user)
-      return res.status(400).json({ message: "Invalid email or password" });
-    if (!user.isActive)
-      return res
-        .status(403)
-        .json({ message: "Your account has been deactivated" });
-    if (user.organization && !user.organization.isActive)
-      return res
-        .status(403)
-        .json({ message: "Organization account is suspended" });
+    if (!user) return res.status(400).json({ message: "Invalid credentials" });
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch)
-      return res.status(400).json({ message: "Invalid email or password" });
+      return res.status(400).json({ message: "Invalid credentials" });
+
+    if (!user.isActive)
+      return res.status(403).json({ message: "Account deactivated" });
 
     const payload = { id: user.id, role: user.role };
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: "1d" });
 
     sendTokenResponse(res, user, token);
   } catch (error) {
-    res.status(500).json({ message: "Server error during login" });
+    console.log(error);
+    res.status(500).json({ message: "Login failed" });
   }
 });
 

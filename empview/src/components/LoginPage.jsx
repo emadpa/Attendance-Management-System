@@ -2,10 +2,42 @@ import { motion } from "framer-motion";
 import { useTheme } from "../context/ThemeContext";
 import { Moon, Sun } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
+
+import { useState } from "react";
+import { useAuth } from "../App";
 
 export default function LoginPage() {
   const { isDark, toggleTheme } = useTheme();
   const nav = useNavigate();
+  // Inside the component, add state:
+  const { setUser } = useAuth();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setError("");
+    setIsLoading(true);
+
+    try {
+      const { data } = await axios.post(
+        "http://localhost:5000/api/auth/login",
+        { email, password },
+        { withCredentials: true }, // equivalent of credentials: "include"
+      );
+      // console.log(data);
+
+      setUser(data);
+      nav("/Dashboard");
+    } catch (err) {
+      setError(err.response?.data?.message || "Invalid credentials");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     // ✅ FIX: Changed lg:flex-row to md:flex-row to trigger side-by-side on smaller screens
@@ -75,24 +107,20 @@ export default function LoginPage() {
             </p>
           </div>
 
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              nav("/Dashboard");
-            }}
-            className="space-y-6"
-          >
+          <form onSubmit={handleLogin} className="space-y-6">
             <div>
               <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wide font-sans">
-                Employee ID
+                Employee Email
               </label>
               <input
                 type="text"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 dark:border-gray-700 rounded-md text-base font-sans
                            bg-white dark:bg-gray-800 text-black dark:text-white
                            focus:outline-none focus:border-black dark:focus:border-white focus:ring-1 focus:ring-black dark:focus:ring-white transition-all
                            placeholder:text-gray-400 dark:placeholder:text-gray-500"
-                placeholder="EMP001"
+                placeholder="employee@example.com"
               />
             </div>
 
@@ -102,6 +130,8 @@ export default function LoginPage() {
               </label>
               <input
                 type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 dark:border-gray-700 rounded-md text-base font-sans
                            bg-white dark:bg-gray-800 text-black dark:text-white
                            focus:outline-none focus:border-black dark:focus:border-white focus:ring-1 focus:ring-black dark:focus:ring-white transition-all
@@ -110,6 +140,9 @@ export default function LoginPage() {
               />
             </div>
 
+            {error && (
+              <p className="text-red-500 text-sm text-center -mt-2">{error}</p>
+            )}
             <motion.button
               whileHover={{ scale: 1.01 }}
               whileTap={{ scale: 0.99 }}
@@ -117,7 +150,7 @@ export default function LoginPage() {
                          hover:bg-gray-800 dark:hover:bg-gray-200 transition-all duration-200
                          uppercase tracking-widest font-sans mt-2"
             >
-              Sign In
+              {isLoading ? "Signing in..." : "Sign In"}
             </motion.button>
           </form>
 

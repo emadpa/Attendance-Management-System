@@ -1,0 +1,8 @@
+# modelserver/.gitignore
+venv/
+__pycache__/
+*.pyc
+*.pyoface_recognition_models/
+venv/
+__pycache__/
+*.pyc

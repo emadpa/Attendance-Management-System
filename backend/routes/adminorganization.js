@@ -46,6 +46,7 @@ router.put("/", async (req, res) => {
         latitude: latitude ? parseFloat(latitude) : null,
         longitude: longitude ? parseFloat(longitude) : null,
         allowedRadiusInMeters: parseInt(allowedRadiusInMeters),
+
         strictGeofence: strictGeofence === true || strictGeofence === "true",
       },
     });

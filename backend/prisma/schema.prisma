@@ -63,6 +63,7 @@ model Holiday {
   @@unique([date, organizationId])
 }
 
+
 model Organization {
   id                    String   @id @default(uuid())
   name                  String
