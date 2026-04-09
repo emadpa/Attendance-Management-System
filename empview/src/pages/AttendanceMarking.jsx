@@ -3,8 +3,9 @@ import Webcam from "react-webcam";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { MapPin, Eye, CheckCircle, XCircle, Loader } from "lucide-react";
+import { PORT } from "../constants/port";
 
-const EXPRESS_API = "http://localhost:5000/api/employee";
+const EXPRESS_API = `http://localhost:${PORT}}/api/employee`;
 const TOTAL_FRAMES = 20;
 const FRAME_INTERVAL = 150; // ms — 20 frames in 3 seconds
 

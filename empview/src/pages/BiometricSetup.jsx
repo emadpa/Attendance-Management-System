@@ -3,7 +3,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../App";
 
-const API = "http://localhost:5000/api/employee";
+import { PORT } from "../constants/port";
+
+const API = `http://localhost:${PORT}/api/employee`;
 
 export default function BiometricSetup() {
   const videoRef = useRef(null);
