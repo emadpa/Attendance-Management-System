@@ -548,6 +548,7 @@ exports.getAttendanceReport = async (req, res) => {
 
       const isToday = dateKey === todayKey;
       const rec = recordMap[dateKey] ?? null;
+
       const leaveInfo = leaveMap[dateKey] ?? null;
 
       if (!isWeekend && !isHoliday) totalWorkingDays++;
@@ -570,9 +571,9 @@ exports.getAttendanceReport = async (req, res) => {
 
       if (status === "PRESENT" || status === "LATE") {
         presentDays++;
-        if (status === "LATE") {
+        if (rec.lateDuration > 0) {
           lateDays++;
-          totalLateMinutes += rec?.lateDuration ?? 0;
+          totalLateMinutes += rec.lateDuration;
         }
         totalOvertimeMinutes += rec?.overtimeDuration ?? 0;
       } else if (status === "ABSENT") {
@@ -1946,13 +1947,11 @@ exports.markAttendance = async (req, res) => {
     }
 
     // ── All gates passed — save attendance record ─────────────────────
-    // const today = new Date();
-    // const todayDate = new Date(
-    //   today.getFullYear(),
-    //   today.getMonth(),
-    //   today.getDate(),
-    // );
-    const todayDate = new Date().toISOString().split("T")[0];
+    const today = new Date();
+    const todayDate = new Date(
+      Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()),
+    );
+    // const todayDate = new Date().toISOString().split("T")[0];
 
     const punchInTime = new Date();
     const confidence = parseFloat(pythonResult.confidence) || null;

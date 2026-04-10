@@ -779,6 +779,7 @@ export default function AttendanceReportPage() {
   };
 
   const s = data?.summary;
+
   const yearOpts = Array.from({ length: 6 }, (_, i) => ({
     value: now.getFullYear() - i,
     label: now.getFullYear() - i,
