@@ -24,6 +24,7 @@ const sendTokenResponse = (res, user, token) => {
       name: user.name,
       role: user.role,
       orgName: user.organization?.name,
+      dateOfJoining: user.dateOfJoining,
     },
   };
   if (user.role === "EMPLOYEE" && !user.isBiometricRegistered) {
@@ -131,10 +132,12 @@ router.post("/login", async (req, res) => {
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch)
-      return res.status(400).json({ message: "Invalid credentials" });
+      return res.status(400).json({ message: "Invalid email or password" });
 
     if (!user.isActive)
       return res.status(403).json({ message: "Account deactivated" });
+
+    // console.log(user);
 
     const payload = { id: user.id, role: user.role };
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: "1d" });
@@ -157,6 +160,7 @@ router.get(
   async (req, res) => {
     res.json({
       user: {
+        dateOfJoining: req.user.dateOfJoining,
         id: req.user.id,
         email: req.user.email,
         name: req.user.name,

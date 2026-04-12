@@ -1,110 +1,43 @@
-// import { Routes, Route, Navigate } from "react-router-dom";
-// import { ThemeProvider } from "./context/ThemeContext";
-// import { useState, useEffect, createContext, useContext } from "react";
-// import LoginPage from "./components/LoginPage";
-// import Dashboard from "./components/Dashboard";
-// import AttendanceMarking from "./components/AttendanceMarking";
-// import socket from "./socket"; // ✅ import socket
-
-// export const AuthContext = createContext(null);
-// export const useAuth = () => useContext(AuthContext);
-
-// function ProtectedRoute({ children }) {
-//   const { user, loading } = useAuth();
-//   if (loading)
-//     return (
-//       <div className="min-h-screen flex items-center justify-center">
-//         Checking session...
-//       </div>
-//     );
-//   return user ? children : <Navigate to="/" replace />;
-// }
-
-// function App() {
-//   const [user, setUser] = useState(null);
-//   const [loading, setLoading] = useState(true);
-
-//   useEffect(() => {
-//     fetch("http://localhost:5000/api/auth/me", {
-//       credentials: "include",
-//     })
-//       .then((res) => (res.ok ? res.json() : null))
-//       .then((data) => {
-//         setUser(data || null);
-//         setLoading(false);
-
-//         // ✅ Connect socket and join room once we confirm user is logged in
-
-//         if (data) {
-//           socket.connect();
-//           socket.emit("join_room", data.user.id);
-//         }
-//       })
-//       .catch(() => {
-//         setUser(null);
-//         setLoading(false);
-//       });
-
-//     // ✅ Disconnect socket when app unmounts / user closes tab
-//     return () => {
-//       socket.disconnect();
-//     };
-//   }, []);
-
-//   return (
-//     <AuthContext.Provider value={{ user, setUser, loading }}>
-//       <ThemeProvider>
-//         <Routes>
-//           <Route path="/" element={<LoginPage />} />
-//           <Route
-//             path="/Dashboard"
-//             element={
-//               <ProtectedRoute>
-//                 <Dashboard />
-//               </ProtectedRoute>
-//             }
-//           />
-//           <Route
-//             path="/MarkAttendance"
-//             element={
-//               <ProtectedRoute>
-//                 <AttendanceMarking />
-//               </ProtectedRoute>
-//             }
-//           />
-//         </Routes>
-//       </ThemeProvider>
-//     </AuthContext.Provider>
-//   );
-// }
-
-// export default App;
-import { Routes, Route, Navigate } from "react-router-dom";
-import { ThemeProvider } from "./context/ThemeContext";
+import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { useState, useEffect, createContext, useContext } from "react";
-import LoginPage from "./components/LoginPage";
-import Dashboard from "./components/Dashboard";
-import AttendanceMarking from "./components/AttendanceMarking";
-import BiometricSetup from "./components/BiometricSetup";
-import socket from "./socket";
+import axios from "axios";
 
+import socket from "./socket";
+import MainLayout from "./components/layout/MainLayout";
+import LoginPage from "./pages/LoginPage";
+import BiometricSetup from "./pages/BiometricSetup";
+
+// ─── Auth Context ─────────────────────────────────────────────────────────────
 export const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
 
+const API = "http://localhost:8080/api";
+
+// ─── Protected Route ──────────────────────────────────────────────────────────
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
 
-  if (loading)
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        Checking session...
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontFamily: "'DM Sans', sans-serif",
+          color: "#94a3b8",
+          fontSize: 14,
+          background: "#f8fafc",
+        }}
+      >
+        Checking session…
       </div>
     );
+  }
 
   if (!user) return <Navigate to="/" replace />;
 
-  // Block access to dashboard until biometric is done
-  // requiresBiometric is top-level: { user: {...}, requiresBiometric: true }
   if (user?.requiresBiometric) {
     return <Navigate to="/biometric-setup" replace />;
   }
@@ -112,62 +45,74 @@ function ProtectedRoute({ children }) {
   return children;
 }
 
+// ─── App ──────────────────────────────────────────────────────────────────────
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetch("http://localhost:5000/api/auth/me", {
-      credentials: "include",
-    })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        setUser(data || null);
-        setLoading(false);
+  // ── Fetch & bootstrap session ─────────────────────────────────────────────
+  const fetchData = async () => {
+    try {
+      const res = await axios.get(`${API}/auth/me`, { withCredentials: true });
+      const data = res.data;
 
-        if (data) {
-          socket.connect();
-          socket.emit("join_room", data.user.id); // data.user.id is correct
-        }
-      })
-      .catch(() => {
+      if (!data) {
         setUser(null);
-        setLoading(false);
-      });
 
+        setLoading(false);
+        return;
+      }
+
+      setUser(data);
+
+      socket.disconnect();
+      socket.connect();
+      socket.emit("join_room", data.user.id);
+    } catch {
+      setUser(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
     return () => socket.disconnect();
   }, []);
 
+  const logout = async () => {
+    try {
+      await axios.post(`${API}/auth/logout`, {}, { withCredentials: true });
+    } catch {
+    } finally {
+      setUser(null);
+
+      socket.disconnect();
+    }
+  };
+  // console.log(user);
+
   return (
-    <AuthContext.Provider value={{ user, setUser, loading }}>
-      <ThemeProvider>
-        <Routes>
-          <Route path="/" element={<LoginPage />} />
+    <AuthContext.Provider value={{ user, setUser, loading, logout }}>
+      <Routes>
+        <Route path="/" element={<LoginPage />} />
 
-          {/* Biometric setup route - accessible only when logged in */}
-          <Route
-            path="/biometric-setup"
-            element={user ? <BiometricSetup /> : <Navigate to="/" replace />}
-          />
+        <Route
+          path="/biometric-setup"
+          element={user ? <BiometricSetup /> : <Navigate to="/" replace />}
+        />
 
-          <Route
-            path="/Dashboard"
-            element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/MarkAttendance"
-            element={
-              <ProtectedRoute>
-                <AttendanceMarking />
-              </ProtectedRoute>
-            }
-          />
-        </Routes>
-      </ThemeProvider>
+        <Route
+          path="/home"
+          element={
+            <ProtectedRoute>
+              <MainLayout user={user} />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route path="*" element={<Navigate to="/home" replace />} />
+      </Routes>
     </AuthContext.Provider>
   );
 }

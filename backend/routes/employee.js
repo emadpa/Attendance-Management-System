@@ -10,12 +10,12 @@ const router = express.Router();
 const employeeController = require("../controllers/Employee");
 const requireAuth = require("../middleware/auth");
 
+router.post("/login", employeeController.loginUser);
 router.post(
   "/registerBiometric",
   upload.single("image"),
   employeeController.registerBiometric,
 );
-router.post("/login", employeeController.loginUser);
 router.post(
   "/mark-attendance",
   requireAuth,
@@ -26,17 +26,60 @@ router.post(
 router.post("/attendance/auto-wfh", employeeController.autoCreateWFHAttendance);
 
 router.get(
-  "/attendance/:userId/:year",
+  "/attendance-status",
   requireAuth,
-  employeeController.getYearlyAttendancePercentage,
+  employeeController.getAttendanceStatus,
+);
+
+router.get(
+  "/attendance/report",
+  requireAuth,
+  employeeController.getAttendanceReport,
 );
 
 router.get("/dashboard", requireAuth, employeeController.getDashboard);
-router.get("/today-schedule", requireAuth, employeeController.getTodaySchedule);
+
+//Schedule
+router.get("/schedule/today", requireAuth, employeeController.getTodaySchedule);
+router.get(
+  "/schedule/monthly",
+  requireAuth,
+  employeeController.getMonthlySchedule,
+);
+router.post(
+  "/schedule",
+  requireAuth,
+  employeeController.createOrUpdateSchedule,
+);
+
+router.patch(
+  "/schedule/:date/task/:taskId",
+  requireAuth,
+  employeeController.updateTask,
+);
+router.delete(
+  "/schedule/:date/task/:taskId",
+  requireAuth,
+  employeeController.deleteTask,
+);
+
+//Attendance analytics
 router.get(
   "/attendance-monthly",
   requireAuth,
   employeeController.getMonthlyAttendance,
+);
+
+router.get(
+  "/attendance/timeline",
+  requireAuth,
+  employeeController.getAttendanceTimeline,
+);
+
+router.get(
+  "/attendance/weekly-hours",
+  requireAuth,
+  employeeController.getWeeklyHours,
 );
 
 router.get("/notifications", requireAuth, employeeController.getNotifications);
@@ -49,6 +92,19 @@ router.patch(
   "/notifications/:notificationId/read",
   requireAuth,
   employeeController.markNotificationRead,
+);
+
+//LEAVES
+
+router
+  .route("/leave")
+  .get(requireAuth, employeeController.getLeaveSummary)
+  .post(requireAuth, employeeController.createLeaveRequest);
+
+router.delete(
+  "/leave/:leaveId",
+  requireAuth,
+  employeeController.deleteLeaveRequest,
 );
 
 module.exports = router;

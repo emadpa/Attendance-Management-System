@@ -9,7 +9,7 @@ const passport = require("passport");
 require("./configs/passport.js");
 
 const app = express();
-const port = 5000;
+const port = 8080;
 
 // ✅ 3. Create the HTTP server using Express
 const server = http.createServer(app);
