@@ -47,8 +47,8 @@ export function OrganizationSettings() {
   const [autoFillYear, setAutoFillYear] = useState(new Date().getFullYear());
   const [isAutoFilling, setIsAutoFilling] = useState(false);
 
-  const ORG_API_URL = "http://localhost:5000/api/admin/organization";
-  const HOLIDAY_API_URL = "http://localhost:5000/api/admin/holidays";
+  const ORG_API_URL = "http://localhost:8080/api/admin/organization";
+  const HOLIDAY_API_URL = "http://localhost:8080/api/admin/holidays";
 
   useEffect(() => {
     const fetchAllData = async () => {

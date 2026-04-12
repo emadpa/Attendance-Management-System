@@ -30,7 +30,7 @@ export function AdminSchedules() {
   const [changedCells, setChangedCells] = useState({});
   const hasUnsavedChanges = Object.keys(changedCells).length > 0;
 
-  const API_URL = "http://localhost:5000/api/admin/schedules";
+  const API_URL = "http://localhost:8080/api/admin/schedules";
 
   // --- Date Math Helpers ---
   const getMondayOfOffset = (offset) => {

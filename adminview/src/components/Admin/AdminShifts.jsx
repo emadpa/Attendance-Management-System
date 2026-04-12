@@ -22,7 +22,7 @@ export function AdminShifts() {
     endTime: "17:00", // Default UI suggestion
   });
 
-  const API_URL = "http://localhost:5000/api/admin/shifts";
+  const API_URL = "http://localhost:8080/api/admin/shifts";
 
   // --- Fetch Shifts from Database ---
   const fetchShifts = async () => {

@@ -22,8 +22,8 @@ export function DepartmentManagement() {
     headId: "",
   });
 
-  const API_URL = "http://localhost:5000/api/admin/departments";
-  const EMPLOYEES_API_URL = "http://localhost:5000/api/admin/employees";
+  const API_URL = "http://localhost:8080/api/admin/departments";
+  const EMPLOYEES_API_URL = "http://localhost:8080/api/admin/employees";
 
   const fetchData = async () => {
     setIsLoading(true);

@@ -23,7 +23,7 @@ export function ManageAdmins() {
     role: "HR_MANAGER",
   });
 
-  const API_URL = "http://localhost:5000/api/admin/manage-admins";
+  const API_URL = "http://localhost:8080/api/admin/manage-admins";
 
   const fetchAdmins = async () => {
     setIsLoading(true);

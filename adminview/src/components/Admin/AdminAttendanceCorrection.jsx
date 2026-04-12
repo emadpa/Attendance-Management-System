@@ -32,8 +32,8 @@ export function AdminAttendanceCorrection() {
     reason: "",
   });
 
-  const API_URL = "http://localhost:5000/api/admin/attendance";
-  const SOCKET_URL = "http://localhost:5000";
+  const API_URL = "http://localhost:8080/api/admin/attendance";
+  const SOCKET_URL = "http://localhost:8080";
 
   // --- 1. Fetch Initial Data ---
   useEffect(() => {
