@@ -22,6 +22,7 @@ export default function Sidebar({
   };
   const navItems = [
     { id: "dashboard", label: "Dashboard", icon: Icons.dashboard },
+    { id: "profile", label: "Profile", icon: Icons.profile },
     { id: "attendance", label: "Attendance", icon: Icons.attendance },
     // Calendar now navigates to its own page
     { id: "calendar", label: "Calendar", icon: Icons.calendar },
@@ -174,7 +175,7 @@ export default function Sidebar({
     <>
       {/* Desktop sidebar */}
       <motion.aside
-        animate={{ width: collapsed ? 72 : 240 }}
+        animate={{ width: collapsed ? 72 : 300 }}
         transition={{ duration: 0.3, ease: "easeInOut" }}
         className="hidden md:flex fixed left-0 top-0 h-full z-30 flex-col"
         style={{

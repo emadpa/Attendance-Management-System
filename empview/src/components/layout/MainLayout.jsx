@@ -4,6 +4,7 @@ import Calendar from "../../pages/CalendarPage";
 import Leave from "../../pages/EmployeeLeavePage";
 import ScheduleCalendar from "../../pages/ScheduleCalendar";
 import AttendanceReportPage from "../../pages/AttendanceReportPage";
+import ProfilePage from "../../pages/ProfilePage";
 
 import Sidebar from "./Sidebar";
 import TopBar from "./Topbar";
@@ -19,6 +20,8 @@ export default function MainLayout({ user }) {
     switch (activePage) {
       case "attendance":
         return <Attendance />;
+      case "profile":
+        return <ProfilePage />;
       case "calendar":
         return <Calendar />;
       case "schedule":
@@ -48,8 +51,7 @@ export default function MainLayout({ user }) {
         );
     }
   };
-  const sidebarW = collapsed ? 72 : 240;
-  //   console.log(user.user.name);
+  const sidebarW = collapsed ? 72 : 300;
 
   return (
     <>
@@ -84,7 +86,6 @@ export default function MainLayout({ user }) {
           <div style={{ maxWidth: 1400, margin: "0 auto" }}>
             <TopBar
               name={user?.user?.name}
-              // unreadCount={notifications.filter((n) => !n.isRead).length}
               onMenuClick={() => setMobileOpen(true)}
             />
 

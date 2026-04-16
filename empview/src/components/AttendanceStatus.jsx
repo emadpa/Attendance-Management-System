@@ -315,7 +315,7 @@ export default function AttendanceStatus() {
       .finally(() => setLoading(false));
   }, []);
 
-  // console.log("Attendance status data:", data);
+  console.log("Attendance status data:", data);
 
   if (loading || !data) return <Skeleton />;
 

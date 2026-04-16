@@ -1,11 +1,18 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
+const cloudinary = require("cloudinary").v2;
+require("../configs/cloudinary");
+
 const axios = require("axios");
 const FormData = require("form-data");
 const bcrypt = require("bcrypt");
+const crypto = require("crypto");
+
 const { v4: uuidv4 } = require("uuid");
 const { startOfDay } = require("date-fns");
+
+const { transporter } = require("../configs/mail");
 
 const PYTHON_SERVICE_URL =
   process.env.PYTHON_SERVICE_URL || "http://localhost:8000";
@@ -156,6 +163,646 @@ exports.loginUser = async (req, res) => {
   }
 };
 
+const otpStore = new Map();
+
+exports.getProfile = async function (req, res) {
+  try {
+    const userId = req.user.id;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        empId: true,
+        name: true,
+        email: true,
+        dob: true,
+        gender: true,
+        mobileNumber: true,
+        address: true,
+        city: true,
+        state: true,
+        pinCode: true,
+        emergencyContactName: true,
+        emergencyContactPhone: true,
+        emergencyContactRelation: true,
+        designation: true,
+        dateOfJoining: true,
+        isBiometricRegistered: true,
+        isActive: true,
+        avatarUrl: true, // add this column to User if you want avatar support
+        department: {
+          select: { id: true, name: true },
+        },
+      },
+    });
+
+    if (!user)
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found." });
+
+    return res.json({ success: true, data: user });
+  } catch (err) {
+    console.error("[getProfile]", err);
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to fetch profile." });
+  }
+};
+
+exports.updatePersonal = async function (req, res) {
+  try {
+    const userId = req.user.id;
+    const {
+      mobileNumber,
+      gender,
+      dob,
+      emergencyContactName,
+      emergencyContactPhone,
+      emergencyContactRelation,
+      address,
+      city,
+      state,
+      pinCode,
+    } = req.body;
+
+    // ── Validation ──────────────────────────────────────────────
+    if (
+      mobileNumber !== undefined &&
+      mobileNumber !== null &&
+      mobileNumber !== ""
+    ) {
+      const digits = mobileNumber.replace(/\D/g, "");
+      if (digits.length < 10 || digits.length > 15) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid mobile number. Must be 10–15 digits.",
+        });
+      }
+    }
+
+    // ── Build update payload — only include fields that were sent ──
+    const data = {};
+
+    if (mobileNumber !== undefined) data.mobileNumber = mobileNumber || null;
+    if (gender !== undefined) data.gender = gender || null;
+    if (dob !== undefined) data.dob = new Date(dob) || null;
+    if (address !== undefined) data.address = address || null;
+    if (city !== undefined) data.city = city || null;
+    if (state !== undefined) data.state = state || null;
+    if (pinCode !== undefined) data.pinCode = pinCode || null;
+    if (emergencyContactName !== undefined)
+      data.emergencyContactName = emergencyContactName || null;
+    if (emergencyContactPhone !== undefined)
+      data.emergencyContactPhone = emergencyContactPhone || null;
+    if (emergencyContactRelation !== undefined)
+      data.emergencyContactRelation = emergencyContactRelation || null;
+
+    if (Object.keys(data).length === 0) {
+      return res
+        .status(400)
+        .json({ success: false, message: "No fields provided to update." });
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data,
+      select: {
+        mobileNumber: true,
+        gender: true,
+        dob: true,
+        emergencyContactName: true,
+        emergencyContactPhone: true,
+        emergencyContactRelation: true,
+        address: true,
+        city: true,
+        state: true,
+        pinCode: true,
+      },
+    });
+
+    return res.json({
+      success: true,
+      message: "Personal information updated.",
+      data: updated,
+    });
+  } catch (err) {
+    console.error("[updatePersonal]", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update personal information.",
+    });
+  }
+};
+
+exports.changePassword = async function (req, res) {
+  try {
+    const userId = req.user.id;
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Both fields are required." });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: "New password must be at least 8 characters.",
+      });
+    }
+
+    const passwordRequirements = {
+      hasUpperCase: /[A-Z]/.test(newPassword),
+      hasNumber: /\d/.test(newPassword),
+      hasSpecialChar: /[^A-Za-z0-9]/.test(newPassword),
+    };
+
+    if (!passwordRequirements.hasUpperCase) {
+      return res.status(400).json({
+        success: false,
+        message: "New password must contain at least one uppercase letter",
+      });
+    }
+
+    if (!passwordRequirements.hasNumber) {
+      return res.status(400).json({
+        success: false,
+        message: "New password must contain at least one number",
+      });
+    }
+
+    if (!passwordRequirements.hasSpecialChar) {
+      return res.status(400).json({
+        success: false,
+        message: "New password must contain at least one special character",
+      });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { password: true },
+    });
+    if (!user)
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found." });
+
+    const valid = await bcrypt.compare(currentPassword, user.password);
+    if (!valid) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Current password is incorrect." });
+    }
+
+    // Prevent reuse
+    const same = await bcrypt.compare(newPassword, user.password);
+    if (same) {
+      return res.status(400).json({
+        success: false,
+        message: "New password must differ from current password.",
+      });
+    }
+
+    const hashed = await bcrypt.hash(newPassword, 12);
+    await prisma.user.update({
+      where: { id: userId },
+      data: { password: hashed },
+    });
+
+    return res.json({ success: true, message: "Password updated." });
+  } catch (err) {
+    console.error("[changePassword]", err);
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to update password." });
+  }
+};
+
+exports.verifyPassword = async function (req, res) {
+  try {
+    const userId = req.user.id;
+    const { password } = req.body;
+
+    if (!password) {
+      return res
+        .status(400)
+        .json({ status: "fail", message: "Password is required" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { password: true },
+    });
+
+    if (!user) {
+      return res
+        .status(400)
+        .json({ status: "fail", message: "User not found" });
+    }
+
+    const match = await bcrypt.compare(password, user.password);
+
+    if (!match) {
+      return res.status(400).json({
+        status: "fail",
+        message: "Incorrect password, Please try again..",
+      });
+    }
+
+    return res
+      .status(200)
+      .json({ status: "success", message: "Password verified." });
+  } catch (error) {
+    console.log("Verification error:", error);
+
+    return res
+      .status(500)
+      .json({ status: "fail", message: "Internal server error" });
+  }
+};
+
+exports.sendEmailOtp = async function (req, res) {
+  try {
+    const userId = req.user.id;
+    const { newEmail } = req.body;
+
+    if (!newEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid email address." });
+    }
+
+    // Check new email isn't already taken
+    const existing = await prisma.user.findFirst({
+      where: { email: newEmail, NOT: { id: userId } },
+    });
+    if (existing) {
+      return res
+        .status(409)
+        .json({ success: false, message: "Email is already in use." });
+    }
+
+    const currentUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+
+    if (currentUser?.email?.toLowerCase() === newEmail.toLowerCase()) {
+      return res.status(400).json({
+        success: false,
+        message: "New email must differ from your current one",
+      });
+    }
+
+    const otp = String(crypto.randomInt(100000, 999999));
+    const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
+
+    otpStore.set(userId, { otp, newEmail, expiresAt });
+
+    await transporter.sendMail({
+      from: `Attendance Management System <${process.env.EMAIL_USER}>`,
+      to: newEmail,
+      subject: "Verify your new email address",
+      html: `
+        <div style="font-family:sans-serif;max-width:420px;margin:0 auto;padding:32px 24px;background:#f8fafc;border-radius:16px;">
+          <h2 style="font-size:20px;font-weight:800;color:#0f172a;margin:0 0 8px;">Verify your new email</h2>
+          <p style="font-size:13px;color:#64748b;margin:0 0 24px;">
+            Use the code below to confirm this email address for your account.
+            It expires in <strong>10 minutes</strong>.
+          </p>
+          <div style="text-align:center;margin:0 0 24px;">
+            <span style="display:inline-block;padding:16px 32px;background:#fff;border:2px solid #e2e8f0;border-radius:12px;font-size:32px;font-weight:900;letter-spacing:10px;color:#6366f1;">
+              ${otp}
+            </span>
+          </div>
+          <p style="font-size:11px;color:#94a3b8;margin:0;">
+            If you didn't request this, you can safely ignore this email.
+          </p>
+        </div>
+      `,
+    });
+
+    return res.json({ success: true, message: "OTP sent." });
+  } catch (err) {
+    console.error("[sendEmailOtp]", err);
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to send verification code." });
+  }
+};
+
+exports.verifyEmailOtp = async function (req, res) {
+  try {
+    const userId = req.user.id;
+    const { newEmail, otp } = req.body;
+
+    if (!newEmail || !otp) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Missing fields." });
+    }
+
+    const record = otpStore.get(userId);
+    if (!record) {
+      return res.status(400).json({
+        success: false,
+        message: "No pending OTP. Please request a new code.",
+      });
+    }
+    if (Date.now() > record.expiresAt) {
+      otpStore.delete(userId);
+      return res.status(400).json({
+        success: false,
+        message: "Code expired. Please request a new one.",
+      });
+    }
+    if (record.newEmail !== newEmail || record.otp !== otp.trim()) {
+      return res.status(400).json({ success: false, message: "Invalid code." });
+    }
+
+    // OTP valid — update email
+    await prisma.user.update({
+      where: { id: userId },
+      data: { email: newEmail },
+    });
+
+    otpStore.delete(userId);
+
+    return res.json({ success: true, message: "Email updated." });
+  } catch (err) {
+    console.error("[verifyEmailOtp]", err);
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to update email." });
+  }
+};
+
+// ── POST /api/employee/profile/avatar ─────────────────────────────
+// multipart/form-data: avatar (file)
+// Saves avatar URL after upload. Assumes multer + cloud storage middleware
+// sets req.file.location (e.g. S3) or req.file.path (local).
+
+// exports.uploadAvatar = async function (req, res) {
+//   try {
+//     const userId = req.user.id;
+
+//     if (!req.file) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "No file uploaded." });
+//     }
+
+//     // Adapt this to your storage: S3 → req.file.location, local → build a URL
+//     const avatarUrl =
+//       req.file.location || `/uploads/avatars/${req.file.filename}`;
+
+//     await prisma.user.update({
+//       where: { id: userId },
+//       data: { avatarUrl },
+//     });
+
+//     return res.json({ success: true, data: { avatarUrl } });
+//   } catch (err) {
+//     console.error("[uploadAvatar]", err);
+//     return res
+//       .status(500)
+//       .json({ success: false, message: "Failed to save avatar." });
+//   }
+// };
+
+// Upload buffer → Cloudinary (returns a Promise)
+function uploadToCloudinary(buffer, folder, publicId) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder,
+        public_id: publicId,
+        overwrite: true,
+        transformation: [
+          { width: 400, height: 400, crop: "fill", gravity: "face" },
+          { quality: "auto", fetch_format: "auto" },
+        ],
+      },
+      (error, result) => {
+        if (error) reject(error);
+        else resolve(result);
+      },
+    );
+    stream.end(buffer);
+  });
+}
+
+function getPublicId(url) {
+  if (!url) return null;
+  const match = url.match(/\/upload\/(?:v\d+\/)?(.+)\.[a-z]+$/i);
+  return match ? match[1] : null;
+}
+
+// ── POST /api/employee/profile/avatar ─────────────────────────────
+exports.uploadAvatar = async function (req, res) {
+  try {
+    const userId = req.user.id;
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "No file uploaded. Please select an image.",
+      });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { avatarUrl: true },
+    });
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found." });
+    }
+
+    // Delete old avatar from Cloudinary if it exists
+    if (user.avatarUrl) {
+      const oldPublicId = getPublicId(user.avatarUrl);
+      if (oldPublicId) {
+        await cloudinary.uploader
+          .destroy(oldPublicId)
+          .catch((err) =>
+            console.warn(
+              "[uploadAvatar] Failed to delete old avatar:",
+              err.message,
+            ),
+          );
+      }
+    }
+
+    // Upload new avatar from memory buffer
+    // Use userId as public_id so each user always has exactly one file
+    const result = await uploadToCloudinary(
+      req.file.buffer,
+      "avatars", // Cloudinary folder
+      `user_${userId}`, // stable public_id — overwrites previous upload
+    );
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { avatarUrl: result.secure_url },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile picture updated successfully",
+      data: {
+        avatarUrl: result.secure_url,
+        width: result.width,
+        height: result.height,
+        size: result.bytes,
+      },
+    });
+  } catch (error) {
+    console.error("[uploadAvatar]", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to upload profile picture. Please try again.",
+    });
+  }
+};
+
+// ── DELETE /api/employee/profile/avatar ───────────────────────────
+exports.deleteAvatar = async function (req, res) {
+  try {
+    const userId = req.user.id;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { avatarUrl: true },
+    });
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found." });
+    }
+    if (!user.avatarUrl) {
+      return res
+        .status(400)
+        .json({ success: false, message: "No profile picture to delete." });
+    }
+
+    const publicId = getPublicId(user.avatarUrl);
+    if (publicId) {
+      await cloudinary.uploader
+        .destroy(publicId)
+        .catch((err) =>
+          console.warn(
+            "[deleteAvatar] Cloudinary deletion failed:",
+            err.message,
+          ),
+        );
+    }
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { avatarUrl: null },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile picture deleted successfully.",
+    });
+  } catch (error) {
+    console.error("[deleteAvatar]", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete profile picture.",
+    });
+  }
+};
+
+// =================================================================
+//  profileRoutes.js
+//  Place in: src/routes/employee/profileRoutes.js
+// =================================================================
+
+/*
+const express  = require("express");
+const multer   = require("multer");
+const router   = express.Router();
+const { protect } = require("../../middleware/authMiddleware");
+const {
+  getProfile,
+  sendEmailOtp,
+  verifyEmailOtp,
+  changePassword,
+  uploadAvatar,
+} = require("../../controllers/employee/profileController");
+
+// Avatar upload config — swap storage engine for S3/Cloudinary as needed
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: "uploads/avatars/",
+    filename: (req, file, cb) => {
+      const ext = file.originalname.split(".").pop();
+      cb(null, `${req.user.id}-${Date.now()}.${ext}`);
+    },
+  }),
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) cb(null, true);
+    else cb(new Error("Only image files are allowed."));
+  },
+});
+
+router.use(protect);
+
+
+
+// POST /api/employee/profile/email/send-otp        → send OTP to new email
+router.post("/email/send-otp",    sendEmailOtp);
+
+// POST /api/employee/profile/email/verify-otp      → verify & apply new email
+router.post("/email/verify-otp",  verifyEmailOtp);
+
+
+
+// POST /api/employee/profile/avatar               → upload profile photo
+router.post("/avatar", upload.single("avatar"), uploadAvatar);
+
+module.exports = router;
+*/
+
+/*
+  ── Mount in main employee router ──────────────────────────────
+  
+  const profileRoutes = require("./employee/profileRoutes");
+  router.use("/profile", profileRoutes);
+
+  Final routes:
+    GET  /api/employee/profile
+    POST /api/employee/profile/email/send-otp
+    POST /api/employee/profile/email/verify-otp
+    PUT  /api/employee/profile/password
+    POST /api/employee/profile/avatar
+
+  ── Prisma: add avatarUrl to User model ─────────────────────────
+  
+  model User {
+    ...
+    avatarUrl  String?   // add this line
+    ...
+  }
+
+  Then: npx prisma migrate dev --name add_avatar_url
+
+  ── Environment variables needed ────────────────────────────────
+
+  SMTP_HOST=smtp.yourprovider.com
+  SMTP_PORT=587
+  SMTP_USER=your@email.com
+  SMTP_PASS=yourpassword
+  SMTP_FROM=noreply@yourcompany.com
+  APP_NAME=HR Portal
+*/
 /**
  * AUTO CREATE WFH ATTENDANCE
  */
@@ -250,6 +897,7 @@ exports.getAttendanceStatus = async (req, res) => {
     const today = new Date(now);
     today.setHours(0, 0, 0, 0);
     const todayKey = formatDateLocal(today); // "YYYY-MM-DD"
+    console.log("Today (local):", today, "Key:", todayKey);
 
     const yearStart = new Date(currentYear, 0, 1);
     yearStart.setHours(0, 0, 0, 0);
@@ -320,9 +968,12 @@ exports.getAttendanceStatus = async (req, res) => {
         : 0;
 
     /* ── today's attendance record ────────────────────────────── */
+
     const todayUTC = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+      Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()),
     );
+    console.log("Today (UTC):", todayUTC);
+
     const todayAttendance = await prisma.attendance.findUnique({
       where: { userId_date: { userId, date: todayUTC } },
     });
@@ -387,9 +1038,6 @@ exports.getAttendanceStatus = async (req, res) => {
   }
 };
 
-/* ────────────────────────────────────────────────────────────────────
-   GET ATTENDANCE REPORT - comprehensive monthly/yearly report
-   ──────────────────────────────────────────────────────────────────── */
 exports.getAttendanceReport = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -732,9 +1380,6 @@ function emptyReport(year, month, startDate, user) {
   };
 }
 
-/* ────────────────────────────────────────────────────────────────────
-   HELPER FUNCTIONS
-   ──────────────────────────────────────────────────────────────────── */
 function formatDateLocal(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -742,37 +1387,9 @@ function formatDateLocal(date) {
   return `${year}-${month}-${day}`;
 }
 
-function formatDateForDisplay(date) {
-  const options = { month: "short", day: "numeric", year: "numeric" };
-  return date.toLocaleDateString("en-US", options);
-}
-
-function formatTime(dateString) {
-  try {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    });
-  } catch {
-    return null;
-  }
-}
-
-// function minutesToTime(minutes) {
-//   const hours = Math.floor(minutes / 60);
-//   const mins = minutes % 60;
-//   const period = hours >= 12 ? "PM" : "AM";
-//   const displayHours = hours > 12 ? hours - 12 : hours === 0 ? 12 : hours;
-//   return `${displayHours}:${String(mins).padStart(2, "0")} ${period}`;
-// }
-
 // GET /employee/dashboard
 exports.getDashboard = async (req, res) => {
   const userId = req.user.id;
-  //   const orgId = req.user.organizationId;
-  // console.log(req.user.dateOfJoining);
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -889,300 +1506,6 @@ exports.getDashboard = async (req, res) => {
   });
 };
 
-//Attendance Report
-// exports.getAttendanceReport = async (req, res) => {
-//   try {
-//     const userId = req.user.id;
-//     const period = req.query.period ?? "month"; // "week" | "month" | "year"
-
-//     /* ── date boundaries ─────────────────────────────────────── */
-//     const now = new Date();
-//     now.setHours(0, 0, 0, 0);
-
-//     let startDate, endDate;
-
-//     if (period === "week") {
-//       const dow = now.getDay();
-//       startDate = new Date(now);
-//       startDate.setDate(now.getDate() - dow); // Sunday
-//       endDate = new Date(startDate);
-//       endDate.setDate(startDate.getDate() + 6);
-//     } else if (period === "month") {
-//       startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-//       endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-//     } else {
-//       // year
-//       startDate = new Date(now.getFullYear(), 0, 1);
-//       endDate = new Date(now.getFullYear(), 11, 31);
-//     }
-//     endDate.setHours(23, 59, 59, 999);
-
-//     /* ── user ─────────────────────────────────────────────────── */
-//     const user = await prisma.user.findUnique({
-//       where: { id: userId },
-//       select: {
-//         dateOfJoining: true,
-//         organizationId: true,
-//         shift: { select: { startTime: true, endTime: true, name: true } },
-//       },
-//     });
-
-//     if (!user) {
-//       return res
-//         .status(404)
-//         .json({ success: false, message: "User not found" });
-//     }
-
-//     const joiningDate = new Date(user.dateOfJoining);
-//     joiningDate.setHours(0, 0, 0, 0);
-//     // Clamp startDate to joining date
-//     if (startDate < joiningDate) startDate = new Date(joiningDate);
-
-//     /* ── attendance records ───────────────────────────────────── */
-//     const records = await prisma.attendance.findMany({
-//       where: { userId, date: { gte: startDate, lte: endDate } },
-//       select: {
-//         date: true,
-//         punchIn: true,
-//         punchOut: true,
-//         status: true,
-//         lateDuration: true,
-//         overtimeDuration: true,
-//       },
-//       orderBy: { date: "asc" },
-//     });
-
-//     const recordMap = {};
-//     records.forEach((r) => {
-//       recordMap[r.date.toISOString().split("T")[0]] = r;
-//     });
-
-//     /* ── holidays ─────────────────────────────────────────────── */
-//     const holidays = await prisma.holiday.findMany({
-//       where: {
-//         organizationId: user.organizationId,
-//         date: { gte: startDate, lte: endDate },
-//       },
-//       select: { date: true, name: true },
-//     });
-
-//     const holidayKeys = new Set(
-//       holidays.map((h) => h.date.toISOString().split("T")[0]),
-//     );
-//     const weekdayHolidays = holidays.filter((h) => {
-//       const d = new Date(h.date).getDay();
-//       return d !== 0 && d !== 6;
-//     }).length;
-
-//     /* ── approved leaves ──────────────────────────────────────── */
-//     const leaveRequests = await prisma.leaveRequest.findMany({
-//       where: {
-//         userId,
-//         status: "APPROVED",
-//         startDate: { lte: endDate },
-//         endDate: { gte: startDate },
-//       },
-//       select: {
-//         startDate: true,
-//         endDate: true,
-//         leaveType: { select: { name: true, isPaid: true } },
-//       },
-//     });
-
-//     const leaveMap = {};
-//     leaveRequests.forEach((lr) => {
-//       const s = new Date(lr.startDate);
-//       const e = new Date(lr.endDate);
-//       for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
-//         const key = d.toISOString().split("T")[0];
-//         leaveMap[key] = {
-//           name: lr.leaveType?.name ?? "Leave",
-//           isPaid: lr.leaveType?.isPaid ?? false,
-//         };
-//       }
-//     });
-
-//     /* ── leave balances ───────────────────────────────────────── */
-//     const leaveBalances = await prisma.leaveBalance.findMany({
-//       where: { userId },
-//       select: {
-//         allowed: true,
-//         used: true,
-//         leaveType: { select: { name: true, isPaid: true } },
-//       },
-//     });
-
-//     /* ── build daily data & compute stats ─────────────────────── */
-//     let totalWorkingDays = 0;
-//     let presentDays = 0;
-//     let absentDays = 0;
-//     let lateDays = 0;
-//     let leaveDays = 0;
-//     let totalLateMinutes = 0;
-//     let totalOvertimeMinutes = 0;
-//     let totalWorkedMinutes = 0;
-//     let workedDaysCount = 0;
-
-//     const dailyTrend = []; // for the trend chart
-
-//     for (
-//       let d = new Date(startDate);
-//       d <= now && d <= endDate;
-//       d.setDate(d.getDate() + 1)
-//     ) {
-//       const dateKey = d.toISOString().split("T")[0];
-//       const dow = d.getDay();
-//       const isWeekend = dow === 0 || dow === 6;
-//       const isHoliday = holidayKeys.has(dateKey);
-//       const rec = recordMap[dateKey] || null;
-//       const leaveInfo = leaveMap[dateKey] || null;
-
-//       if (!isWeekend && !isHoliday) totalWorkingDays++;
-
-//       let dayStatus;
-//       if (rec?.status) {
-//         dayStatus = rec.status;
-//       } else if (leaveInfo) {
-//         dayStatus = "ON_LEAVE";
-//       } else if (isHoliday) {
-//         dayStatus = "HOLIDAY";
-//       } else if (isWeekend) {
-//         dayStatus = "WEEKEND";
-//       } else {
-//         dayStatus = "ABSENT";
-//       }
-
-//       // Accumulate stats
-//       if (dayStatus === "PRESENT" || dayStatus === "LATE") {
-//         presentDays++;
-//         if (dayStatus === "LATE") {
-//           lateDays++;
-//           totalLateMinutes += rec?.lateDuration ?? 0;
-//         }
-//         totalOvertimeMinutes += rec?.overtimeDuration ?? 0;
-
-//         if (rec?.punchIn && rec?.punchOut) {
-//           const inMs = new Date(rec.punchIn).getTime();
-//           const outMs = new Date(rec.punchOut).getTime();
-//           const mins = Math.max(0, (outMs - inMs) / 60000);
-//           totalWorkedMinutes += mins;
-//           workedDaysCount++;
-//         }
-//       } else if (dayStatus === "ABSENT") {
-//         absentDays++;
-//       } else if (dayStatus === "ON_LEAVE") {
-//         leaveDays++;
-//       }
-
-//       // Trend entry (include weekdays only for cleaner chart)
-//       if (!isWeekend) {
-//         dailyTrend.push({
-//           date: dateKey,
-//           dayLabel: d.toLocaleDateString("en-US", {
-//             day: "numeric",
-//             month: "short",
-//           }),
-//           status: dayStatus,
-//           hoursWorked:
-//             rec?.punchIn && rec?.punchOut
-//               ? parseFloat(
-//                   (
-//                     (new Date(rec.punchOut) - new Date(rec.punchIn)) /
-//                     3600000
-//                   ).toFixed(1),
-//                 )
-//               : 0,
-//           lateDuration: rec?.lateDuration ?? 0,
-//           overtimeDuration: rec?.overtimeDuration ?? 0,
-//         });
-//       }
-//     }
-
-//     totalWorkingDays -= weekdayHolidays;
-
-//     const attendancePercentage =
-//       totalWorkingDays > 0
-//         ? Math.round((presentDays / totalWorkingDays) * 100)
-//         : 0;
-
-//     const avgDailyHours =
-//       workedDaysCount > 0
-//         ? parseFloat((totalWorkedMinutes / workedDaysCount / 60).toFixed(1))
-//         : 0;
-
-//     const shiftHours = (() => {
-//       if (!user.shift) return 8;
-//       const [sh, sm] = user.shift.startTime.split(":").map(Number);
-//       const [eh, em] = user.shift.endTime.split(":").map(Number);
-//       return eh + em / 60 - (sh + sm / 60);
-//     })();
-
-//     return res.status(200).json({
-//       success: true,
-//       data: {
-//         period,
-//         periodLabel:
-//           period === "week"
-//             ? "This Week"
-//             : period === "month"
-//               ? "This Month"
-//               : "This Year",
-//         startDate: startDate.toISOString().split("T")[0],
-//         endDate:
-//           Math.min(now.getTime(), endDate.getTime()) === now.getTime()
-//             ? now.toISOString().split("T")[0]
-//             : endDate.toISOString().split("T")[0],
-
-//         // Overview stats
-//         stats: {
-//           attendancePercentage,
-//           presentDays,
-//           absentDays,
-//           lateDays,
-//           leaveDays,
-//           totalWorkingDays,
-//           totalLateMinutes,
-//           totalOvertimeMinutes,
-//           avgDailyHours,
-//           shiftHours,
-//         },
-
-//         // Donut breakdown (days count per status)
-//         breakdown: [
-//           { label: "Present", value: presentDays, color: "#6366f1" },
-//           { label: "Absent", value: absentDays, color: "#ef4444" },
-//           { label: "Late", value: lateDays, color: "#f97316" },
-//           { label: "On Leave", value: leaveDays, color: "#06b6d4" },
-//           {
-//             label: "Holiday",
-//             value: holidays.filter((h) => {
-//               const d = new Date(h.date).getDay();
-//               return d !== 0 && d !== 6;
-//             }).length,
-//             color: "#10b981",
-//           },
-//         ].filter((b) => b.value > 0),
-
-//         // Trend chart (one entry per weekday in period)
-//         trend: dailyTrend,
-
-//         // Leave balances
-//         leaveBalances: leaveBalances.map((b) => ({
-//           name: b.leaveType?.name ?? "Leave",
-//           isPaid: b.leaveType?.isPaid ?? false,
-//           allowed: b.allowed,
-//           used: b.used,
-//           remaining: b.allowed - b.used,
-//         })),
-//       },
-//     });
-//   } catch (error) {
-//     console.error("[getAttendanceReport]", error);
-//     return res
-//       .status(500)
-//       .json({ success: false, message: "Internal server error" });
-//   }
-// };
 const minutesSinceMidnight = (date) => date.getHours() * 60 + date.getMinutes();
 const average = (nums) =>
   nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0;
@@ -1543,110 +1866,6 @@ exports.deleteTask = async (req, res) => {
   }
 };
 
-// exports.getMonthlyAttendance = async (req, res) => {
-//   try {
-//     const userId = req.user.id;
-//     //// from auth middleware
-//     // const { userId } = req.body; // from auth middleware
-//     const { month, year } = req.query;
-//     console.log(userId);
-
-//     // Validate query params
-//     if (!month || !year) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "month and year are required query parameters",
-//       });
-//     }
-
-//     const monthNum = parseInt(month);
-//     const yearNum = parseInt(year);
-
-//     if (monthNum < 1 || monthNum > 12 || isNaN(yearNum)) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Invalid month or year",
-//       });
-//     }
-
-//     // First and last day of the requested month
-//     const startDate = new Date(yearNum, monthNum - 1, 1);
-//     const endDate = new Date(yearNum, monthNum, 0); // day 0 of next month = last day of current
-
-//     const attendanceRecords = await prisma.attendance.findMany({
-//       where: {
-//         userId,
-//         date: {
-//           gte: startDate,
-//           lte: endDate,
-//         },
-//       },
-//       select: {
-//         date: true,
-//         status: true,
-//         punchIn: true,
-//         punchOut: true,
-//         lateDuration: true,
-//         overtimeDuration: true,
-//         // isManualEntry: true,
-//         // workType: true,
-//       },
-//       orderBy: {
-//         date: "asc",
-//       },
-//     });
-//     console.log(attendanceRecords);
-
-//     // Build a map of date string -> attendance record
-//     // So frontend can easily look up any day
-//     const attendanceMap = {};
-//     attendanceRecords.forEach((record) => {
-//       const dateKey = record.date.toISOString().split("T")[0]; // "2026-03-01"
-//       attendanceMap[dateKey] = {
-//         status: record.status,
-//         punchIn: record.punchIn,
-//         punchOut: record.punchOut,
-//         lateDuration: record.lateDuration,
-//         overtimeDuration: record.overtimeDuration,
-//         // isManualEntry: record.isManualEntry,
-//       };
-//     });
-
-//     // Build summary counts for the month
-//     const summary = {
-//       PRESENT: 0,
-//       ABSENT: 0,
-//       LATE: 0,
-//       HALF_DAY: 0,
-//       ON_LEAVE: 0,
-//       // MISSED_PUNCH: 0,
-//     };
-
-//     attendanceRecords.forEach((record) => {
-//       if (summary[record.status] !== undefined) {
-//         summary[record.status]++;
-//       }
-//     });
-
-//     return res.status(200).json({
-//       success: true,
-//       data: {
-//         month: monthNum,
-//         year: yearNum,
-//         summary,
-//         attendance: attendanceMap,
-//       },
-//     });
-//   } catch (error) {
-//     console.error("Error fetching monthly attendance:", error);
-//     return res.status(500).json({
-//       success: false,
-//       message: "Internal server error",
-//     });
-//   }
-// };
-
-//Notifications
 exports.markNotificationRead = async (req, res) => {
   try {
     const userId = req.user.id; // from auth middleware
@@ -2203,12 +2422,12 @@ exports.deleteLeaveRequest = async (req, res) => {
  *   userId      — target employee id (falls back to req.user.id)
  */
 
-function formatDateLocal(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
+// function formatDateLocal(date) {
+//   const year = date.getFullYear();
+//   const month = String(date.getMonth() + 1).padStart(2, "0");
+//   const day = String(date.getDate()).padStart(2, "0");
+//   return `${year}-${month}-${day}`;
+// }
 exports.getAttendanceTimeline = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -2550,38 +2769,6 @@ exports.getWeeklyHours = async (req, res) => {
       .json({ success: false, message: "Internal server error" });
   }
 };
-
-/*
- NOTE FOR FASTAPI:
- ─────────────────
- Your current FastAPI /api/attendance/mark pulls the stored embedding from
- its local mock DB using user_id. Since your real embeddings live in Postgres,
- you have two options:
-
- Option A (recommended): Add a new FastAPI endpoint /api/attendance/verify
- that accepts `stored_embedding` as a Form field (JSON string) instead of
- looking it up locally. Express sends it directly from Prisma.
-
- Option B: Keep FastAPI as-is but sync embeddings to FastAPI's local DB
- whenever a user registers biometrics in Express.
-
- Option A requires this change in FastAPI main.py:
-
- @app.post("/api/attendance/verify")
- async def verify_attendance(
-     stored_embedding_json: str = Form(...),
-     files: List[UploadFile] = File(...)
- ):
-     stored_encoding = np.array(json.loads(stored_embedding_json))
-     frames_bytes = [await f.read() for f in files]
-     captured_encoding, is_live, msg = face_service.analyze_blink_sequence(frames_bytes)
-     if not is_live:
-         return {"verified": False, "message": msg, "confidence": "0%"}
-     is_match, confidence = face_service.verify_user(captured_encoding, stored_encoding)
-     if is_match:
-         return {"verified": True, "confidence": f"{confidence}%"}
-     return {"verified": False, "message": "Biometric Mismatch", "confidence": f"{confidence}%"}
-*/
 
 exports.getMonthlyAttendance = async (req, res) => {
   try {

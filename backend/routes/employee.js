@@ -16,6 +16,46 @@ router.post(
   upload.single("image"),
   employeeController.registerBiometric,
 );
+
+router.get("/profile", requireAuth, employeeController.getProfile);
+router.patch(
+  "/profile/update-personal",
+  requireAuth,
+  employeeController.updatePersonal,
+);
+
+router.patch(
+  "/profile/update-password",
+  requireAuth,
+  employeeController.changePassword,
+);
+
+router.post(
+  "/profile/verify-password",
+  requireAuth,
+  employeeController.verifyPassword,
+);
+
+router.post(
+  "/profile/email/send-otp",
+  requireAuth,
+  employeeController.sendEmailOtp,
+);
+router.post(
+  "/profile/email/verify-otp",
+  requireAuth,
+  employeeController.verifyEmailOtp,
+);
+
+router.post(
+  "/profile/avatar",
+  requireAuth,
+  upload.single("avatar"),
+  employeeController.uploadAvatar,
+);
+
+router.delete("/profile/avatar", requireAuth, employeeController.deleteAvatar);
+
 router.post(
   "/mark-attendance",
   requireAuth,
