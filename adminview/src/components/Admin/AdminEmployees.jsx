@@ -49,7 +49,7 @@ export function AdminEmployees() {
   });
   const [errors, setErrors] = useState({});
 
-  const API_URL = "http://localhost:5000/api/admin/employees";
+  const API_URL = "http://localhost:8080/api/admin/employees";
 
   const fetchEmployees = async () => {
     setIsLoading(true);

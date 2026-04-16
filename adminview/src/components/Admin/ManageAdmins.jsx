@@ -6,11 +6,11 @@ import { Input } from "../shared/Input";
 import { Select } from "../shared/Select";
 import { Badge } from "../shared/Badge";
 import { Toast, useToast } from "../shared/Toast";
-import { useAuth } from "../shared/AuthContext"; // ✅ Imported useAuth
+import { useAuth } from "../shared/AuthContext";
 
 export function ManageAdmins() {
   const { toast, showToast, hideToast } = useToast();
-  const { user } = useAuth(); // ✅ Extract the logged-in user to get the orgName
+  const { user } = useAuth();
 
   const [admins, setAdmins] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -20,12 +20,11 @@ export function ManageAdmins() {
   const [newAdmin, setNewAdmin] = useState({
     name: "",
     email: "",
-    role: "HR_MANAGER", // Defaults to the Enum string
+    role: "HR_MANAGER",
   });
 
-  const API_URL = "http://localhost:5000/api/admin/manage-admins";
+  const API_URL = "http://localhost:8080/api/admin/manage-admins";
 
-  // --- Fetch Admins from Database ---
   const fetchAdmins = async () => {
     setIsLoading(true);
     try {
@@ -42,7 +41,6 @@ export function ManageAdmins() {
     fetchAdmins();
   }, []);
 
-  // --- Format Enums for the UI ---
   const formatRoleName = (roleStr) => {
     return roleStr
       .split("_")
@@ -50,7 +48,6 @@ export function ManageAdmins() {
       .join(" ");
   };
 
-  // --- Send Invite (Create Admin) ---
   const handleInviteAdmin = async (e) => {
     e.preventDefault();
     if (!newAdmin.name || !newAdmin.email) return;
@@ -58,15 +55,9 @@ export function ManageAdmins() {
     setIsSubmitting(true);
     try {
       await axios.post(API_URL, newAdmin);
-
-      showToast(
-        `An invitation link has been sent to ${newAdmin.email}!`,
-        "success",
-      );
+      showToast(`Invitation sent to ${newAdmin.email}!`, "success");
       setIsModalOpen(false);
       setNewAdmin({ name: "", email: "", role: "HR_MANAGER" });
-
-      // Refresh list to show the newly invited admin
       fetchAdmins();
     } catch (error) {
       showToast(
@@ -78,29 +69,25 @@ export function ManageAdmins() {
     }
   };
 
-  // --- Revoke Access ---
   const handleDelete = async (id, role) => {
     if (role === "SUPER_ADMIN") {
       showToast("You cannot revoke the Super Admin account.", "error");
       return;
     }
 
-    if (
-      window.confirm("Are you sure you want to revoke this admin's access?")
-    ) {
+    if (window.confirm("Are you sure you want to revoke access?")) {
       try {
         await axios.delete(`${API_URL}/${id}`);
         setAdmins(admins.filter((admin) => admin.id !== id));
-        showToast("Administrator access revoked.", "success");
+        showToast("Access revoked.", "success");
       } catch (error) {
         showToast("Failed to revoke access.", "error");
       }
     }
   };
 
-  // --- Simulate Resending Invite ---
   const handleResendInvite = (email) => {
-    showToast(`Invitation email resent to ${email}`, "success");
+    showToast(`Invitation resent to ${email}`, "success");
   };
 
   if (isLoading) {
@@ -112,105 +99,130 @@ export function ManageAdmins() {
   }
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden font-sans relative">
-      <Toast {...toast} onClose={hideToast} />
+    <>
+      <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden font-sans relative">
+        <Toast {...toast} onClose={hideToast} />
 
-      <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50/50">
-        <div>
-          <h2 className="text-lg font-medium text-gray-900 flex items-center gap-2">
-            <Shield className="w-5 h-5 text-gray-400" />
-            Admin Access & Roles
-          </h2>
-          <p className="text-sm text-gray-500 mt-1">
-            {/* ✅ Dynamically showing the organization name instead of "LuxeHR" */}
-            Manage who has access to the {user?.orgName || "organization"}{" "}
-            dashboard.
-          </p>
+        {/* --- HEADER SECTION --- */}
+        <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white">
+          <div className="flex items-center gap-4">
+            <div className="p-2.5 bg-gray-50 rounded-full border border-gray-100">
+              <Shield className="w-5 h-5 text-gray-900" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900 leading-none">
+                Admin Access & Roles
+              </h2>
+              <p className="text-sm text-gray-500 mt-1.5">
+                Manage dashboard access for{" "}
+                {user?.orgName || "the organization"}.
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-2 bg-black text-white px-5 py-2.5 rounded-sm text-xs font-bold hover:bg-gray-800 transition-all uppercase tracking-widest shadow-sm"
+          >
+            <Plus className="w-4 h-4" />
+            Invite Admin
+          </button>
         </div>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 bg-black text-white px-4 py-2 rounded-sm text-sm font-medium hover:opacity-90 transition-opacity uppercase tracking-wider"
-        >
-          <Plus className="w-4 h-4" />
-          Invite Admin
-        </button>
-      </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm text-gray-600">
-          <thead className="bg-gray-50 border-b border-gray-200 text-xs uppercase tracking-wider text-gray-500">
-            <tr>
-              <th className="px-6 py-4 font-medium">Administrator</th>
-              <th className="px-6 py-4 font-medium">Role</th>
-              <th className="px-6 py-4 font-medium">Status</th>
-              <th className="px-6 py-4 font-medium text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {admins.length === 0 && (
+        {/* --- TABLE SECTION (Increased Header Visibility) --- */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm text-gray-600">
+            <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <td colSpan="4" className="text-center p-8 text-gray-500">
-                  No administrators found.
-                </td>
+                <th className="px-6 py-4 text-[11px] uppercase tracking-widest text-gray-900 font-bold opacity-100">
+                  Administrator
+                </th>
+                <th className="px-6 py-4 text-[11px] uppercase tracking-widest text-gray-900 font-bold opacity-100">
+                  Role
+                </th>
+                <th className="px-6 py-4 text-[11px] uppercase tracking-widest text-gray-900 font-bold opacity-100">
+                  Status
+                </th>
+                <th className="px-6 py-4 text-[11px] uppercase tracking-widest text-gray-900 font-bold opacity-100 text-right">
+                  Actions
+                </th>
               </tr>
-            )}
-            {admins.map((admin) => (
-              <tr
-                key={admin.id}
-                className="hover:bg-gray-50/50 transition-colors group"
-              >
-                <td className="px-6 py-4">
-                  <div className="font-medium text-gray-900">{admin.name}</div>
-                  <div className="text-gray-400 text-xs mt-0.5">
-                    {admin.email}
-                  </div>
-                </td>
-                <td className="px-6 py-4">
-                  <span
-                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      admin.role === "SUPER_ADMIN"
-                        ? "bg-purple-100 text-purple-800"
-                        : "bg-gray-100 text-gray-800"
-                    }`}
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {admins.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan="4"
+                    className="text-center p-12 text-gray-400 italic"
                   >
-                    {formatRoleName(admin.role)}
-                  </span>
-                </td>
-                <td className="px-6 py-4">
-                  <Badge
-                    variant={admin.status === "Active" ? "success" : "warning"}
+                    No administrators found.
+                  </td>
+                </tr>
+              ) : (
+                admins.map((admin) => (
+                  <tr
+                    key={admin.id}
+                    className="hover:bg-gray-50/30 transition-colors group"
                   >
-                    {admin.status}
-                  </Badge>
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <div className="flex items-center justify-end gap-3 text-gray-400">
-                    {admin.status === "Pending Invite" && (
-                      <button
-                        onClick={() => handleResendInvite(admin.email)}
-                        className="hover:text-black transition-colors"
-                        title="Resend Invite"
+                    <td className="px-6 py-4">
+                      <div className="font-medium text-gray-900">
+                        {admin.name}
+                      </div>
+                      <div className="text-gray-400 text-xs mt-0.5">
+                        {admin.email}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border ${
+                          admin.role === "SUPER_ADMIN"
+                            ? "bg-purple-50 text-purple-700 border-purple-100"
+                            : "bg-gray-100 text-gray-600 border-gray-200"
+                        }`}
                       >
-                        <Mail className="w-4 h-4" />
-                      </button>
-                    )}
-                    {admin.role !== "SUPER_ADMIN" && (
-                      <button
-                        onClick={() => handleDelete(admin.id, admin.role)}
-                        className="opacity-0 group-hover:opacity-100 hover:text-red-600 transition-all"
-                        title="Revoke Access"
+                        {formatRoleName(admin.role)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <Badge
+                        variant={
+                          admin.status === "Active" ? "success" : "warning"
+                        }
                       >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                        {admin.status}
+                      </Badge>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-4 text-gray-400">
+                        {admin.status === "Pending Invite" && (
+                          <button
+                            onClick={() => handleResendInvite(admin.email)}
+                            className="hover:text-black transition-colors"
+                            title="Resend Invite"
+                          >
+                            <Mail className="w-4 h-4" />
+                          </button>
+                        )}
+                        {admin.role !== "SUPER_ADMIN" && (
+                          <button
+                            onClick={() => handleDelete(admin.id, admin.role)}
+                            className="opacity-0 group-hover:opacity-100 hover:text-red-600 transition-all"
+                            title="Revoke Access"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
+      {/* --- MODAL SECTION --- */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => {
@@ -221,9 +233,8 @@ export function ManageAdmins() {
         size="md"
       >
         <form onSubmit={handleInviteAdmin} className="space-y-6">
-          <p className="text-sm text-gray-500 mb-4">
-            They will receive an email with instructions on how to set their
-            password and log in.
+          <p className="text-xs text-gray-400 uppercase tracking-widest font-bold">
+            Account Details
           </p>
 
           <Input
@@ -251,7 +262,6 @@ export function ManageAdmins() {
             onChange={(e) => setNewAdmin({ ...newAdmin, role: e.target.value })}
             required
           >
-            {/* Matches Prisma Schema Enums */}
             <option value="HR_MANAGER">
               HR Manager (Full Employee Access)
             </option>
@@ -259,25 +269,28 @@ export function ManageAdmins() {
             <option value="ADMIN">Admin (Standard Access)</option>
           </Select>
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+          <div className="flex justify-end gap-3 pt-6 border-t border-gray-100">
             <button
               type="button"
               onClick={() => setIsModalOpen(false)}
-              className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-sm transition-colors"
+              className="px-4 py-2 text-xs font-bold text-gray-400 hover:text-gray-900 transition-colors uppercase tracking-widest"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="flex items-center justify-center gap-2 px-6 py-2 bg-black text-white text-sm font-medium rounded-sm hover:opacity-90 transition-opacity disabled:opacity-70"
+              className="flex items-center justify-center gap-2 px-8 py-2.5 bg-black text-white text-xs font-bold rounded-sm hover:bg-gray-800 transition-all disabled:opacity-50 uppercase tracking-widest"
             >
-              {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
-              {isSubmitting ? "Sending..." : "Send Invite"}
+              {isSubmitting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                "Send Invite"
+              )}
             </button>
           </div>
         </form>
       </Modal>
-    </div>
+    </>
   );
 }

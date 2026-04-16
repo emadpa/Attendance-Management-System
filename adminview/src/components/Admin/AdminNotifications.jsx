@@ -30,7 +30,7 @@ export function AdminNotifications() {
   const [isEmpDropdownOpen, setIsEmpDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
 
-  const API_URL = "http://localhost:5000/api/admin/notifications";
+  const API_URL = "http://localhost:8080/api/admin/notifications";
 
   useEffect(() => {
     const handleClickOutside = (event) => {

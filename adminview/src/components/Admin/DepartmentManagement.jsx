@@ -3,7 +3,6 @@ import axios from "axios";
 import { Plus, MoreHorizontal, Edit, Trash2, Loader2, X } from "lucide-react";
 import { Toast, useToast } from "../shared/Toast";
 import { Input } from "../shared/Input";
-// ✅ Import the new searchable component (You can remove the old Select import if it's no longer used here)
 import { SearchableEmployeeSelect } from "../shared/SearchableEmployeeSelect";
 
 export function DepartmentManagement() {
@@ -23,8 +22,8 @@ export function DepartmentManagement() {
     headId: "",
   });
 
-  const API_URL = "http://localhost:5000/api/admin/departments";
-  const EMPLOYEES_API_URL = "http://localhost:5000/api/admin/employees";
+  const API_URL = "http://localhost:8080/api/admin/departments";
+  const EMPLOYEES_API_URL = "http://localhost:8080/api/admin/employees";
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -35,7 +34,7 @@ export function DepartmentManagement() {
       ]);
 
       setDepartments(deptResponse.data);
-      setEmployees(empResponse.data.employees); // ✅ This contains dbId, id, name, and role
+      setEmployees(empResponse.data.employees);
     } catch (error) {
       console.error(error);
       showToast("Failed to load department data", "error");
@@ -114,98 +113,106 @@ export function DepartmentManagement() {
   }
 
   return (
-    <div className="bg-white rounded-sm border border-gray-200 shadow-sm overflow-hidden relative">
-      <Toast {...toast} onClose={hideToast} />
+    <>
+      <div className="bg-white rounded-sm border border-gray-200 shadow-sm overflow-hidden relative">
+        <Toast {...toast} onClose={hideToast} />
 
-      <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50/50">
-        <h2 className="text-lg font-serif font-medium text-gray-900">
-          All Departments
-        </h2>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 bg-black text-white px-4 py-2 rounded-sm text-sm font-medium hover:opacity-90 transition-opacity"
-        >
-          <Plus className="w-4 h-4" />
-          Add Department
-        </button>
-      </div>
+        {/* --- OPTIMIZED HEADER SECTION --- */}
+        <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-white">
+          <div>
+            <h2 className="text-xl font-serif font-semibold text-gray-900 tracking-tight">
+              All Departments
+            </h2>
+            <p className="text-xs text-gray-500 mt-1">
+              Organize structural units and assign leadership roles.
+            </p>
+          </div>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-2 bg-black text-white px-5 py-2.5 rounded-sm text-sm font-medium hover:bg-gray-800 transition-all shadow-sm active:scale-95"
+          >
+            <Plus className="w-4 h-4" />
+            Add Department
+          </button>
+        </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm text-gray-600">
-          <thead className="bg-gray-50 border-b border-gray-200 text-xs uppercase tracking-wider text-gray-500">
-            <tr>
-              <th className="px-6 py-4 font-medium">Department Name</th>
-              <th className="px-6 py-4 font-medium">Department Head</th>
-              <th className="px-6 py-4 font-medium">Employees</th>
-              <th className="px-6 py-4 font-medium text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {departments.map((dept) => (
-              <tr
-                key={dept.id}
-                className="hover:bg-gray-50/50 transition-colors group"
-              >
-                <td className="px-6 py-4 font-medium text-gray-900">
-                  {dept.name}
-                </td>
-                <td className="px-6 py-4">
-                  {dept.head === "Unassigned" ? (
-                    <span className="text-gray-400 italic">Unassigned</span>
-                  ) : (
-                    <span className="font-medium text-gray-700">
-                      {dept.head}
-                    </span>
-                  )}
-                </td>
-                <td className="px-6 py-4">
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                    {dept.employees} members
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <div className="flex items-center justify-end gap-3 text-gray-400">
-                    <button
-                      onClick={() => {
-                        setEditingDept({
-                          id: dept.id,
-                          name: dept.name,
-                          headId: dept.headId || "",
-                        });
-                        setIsEditModalOpen(true);
-                      }}
-                      className="opacity-0 group-hover:opacity-100 hover:text-black transition-all"
-                      title="Assign Department Head"
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(dept.id)}
-                      className="opacity-0 group-hover:opacity-100 hover:text-red-600 transition-all"
-                      title="Delete department"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                    <button className="hover:text-black transition-colors">
-                      <MoreHorizontal className="w-4 h-4" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {departments.length === 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm text-gray-600">
+            <thead className="bg-gray-50 border-b border-gray-200 text-xs uppercase tracking-wider text-gray-500">
               <tr>
-                <td
-                  colSpan="4"
-                  className="px-6 py-12 text-center text-gray-500"
-                >
-                  No departments found. Add your first department to get
-                  started.
-                </td>
+                <th className="px-6 py-4 font-medium">Department Name</th>
+                <th className="px-6 py-4 font-medium">Department Head</th>
+                <th className="px-6 py-4 font-medium">Employees</th>
+                <th className="px-6 py-4 font-medium text-right">Actions</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {departments.map((dept) => (
+                <tr
+                  key={dept.id}
+                  className="hover:bg-gray-50/50 transition-colors group"
+                >
+                  <td className="px-6 py-4 font-medium text-gray-900">
+                    {dept.name}
+                  </td>
+                  <td className="px-6 py-4">
+                    {dept.head === "Unassigned" ? (
+                      <span className="text-gray-400 italic">Unassigned</span>
+                    ) : (
+                      <span className="font-medium text-gray-700">
+                        {dept.head}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                      {dept.employees} members
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex items-center justify-end gap-3 text-gray-400">
+                      <button
+                        onClick={() => {
+                          setEditingDept({
+                            id: dept.id,
+                            name: dept.name,
+                            headId: dept.headId || "",
+                          });
+                          setIsEditModalOpen(true);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 hover:text-black transition-all"
+                        title="Assign Department Head"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(dept.id)}
+                        className="opacity-0 group-hover:opacity-100 hover:text-red-600 transition-all"
+                        title="Delete department"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                      <button className="hover:text-black transition-colors">
+                        <MoreHorizontal className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {departments.length === 0 && (
+                <tr>
+                  <td
+                    colSpan="4"
+                    className="px-6 py-12 text-center text-gray-500"
+                  >
+                    No departments found. Add your first department to get
+                    started.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* --- ADD DEPARTMENT MODAL --- */}
@@ -238,7 +245,6 @@ export function DepartmentManagement() {
                 placeholder="e.g. Computer Science, Library"
               />
 
-              {/* ✅ Upgraded to Searchable Dropdown */}
               <SearchableEmployeeSelect
                 label="Department Head (Optional)"
                 employees={employees}
@@ -297,7 +303,6 @@ export function DepartmentManagement() {
                 </div>
               </div>
 
-              {/* ✅ Upgraded to Searchable Dropdown */}
               <SearchableEmployeeSelect
                 label="Select New Head"
                 employees={employees}
@@ -326,6 +331,6 @@ export function DepartmentManagement() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

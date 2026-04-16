@@ -27,7 +27,7 @@ export function AdminOverview() {
     if (isRefresh) setIsRefreshing(true);
     try {
       const response = await axios.get(
-        "http://localhost:5000/api/admin/overview",
+        "http://localhost:8080/api/admin/overview",
       );
       setData(response.data);
       if (isRefresh) showToast("Data refreshed successfully", "success");

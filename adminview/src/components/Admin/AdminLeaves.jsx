@@ -55,7 +55,7 @@ export function AdminLeaves() {
     reason: "",
   });
 
-  const API_URL = "http://localhost:5000/api/admin/leaves";
+  const API_URL = "http://localhost:8080/api/admin/leaves";
 
   // --- Click Outside Listener for Search Dropdown ---
   useEffect(() => {

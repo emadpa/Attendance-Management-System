@@ -4,11 +4,11 @@ import { AdminLayout } from "./AdminLayout";
 import { Badge } from "../shared/Badge";
 import { Toast, useToast } from "../shared/Toast";
 import { motion, AnimatePresence } from "framer-motion";
-import { useSearchParams } from "react-router-dom"; // ✅ Imported to read the URL parameter
+import { useSearchParams } from "react-router-dom";
+import { io } from "socket.io-client";
 import {
   Clock,
   Search,
-  Filter,
   AlertCircle,
   Check,
   X,
@@ -18,53 +18,75 @@ import {
 
 export function AdminAttendanceCorrection() {
   const { toast, showToast, hideToast } = useToast();
-
-  // ✅ Read URL parameters
   const [searchParams] = useSearchParams();
 
   const [records, setRecords] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // ✅ Default to 'corrections' if the URL says ?filter=corrections, otherwise 'all'
   const [filter, setFilter] = useState(searchParams.get("filter") || "all");
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Modal State
   const [editingRecord, setEditingRecord] = useState(null);
   const [correctionForm, setCorrectionForm] = useState({
-    punchOutTime: "17:00", // Default to 5 PM
+    punchOutTime: "17:00",
     reason: "",
   });
 
-  const API_URL = "http://localhost:5000/api/admin/attendance";
+  const API_URL = "http://localhost:8080/api/admin/attendance";
+  const SOCKET_URL = "http://localhost:8080";
 
-  // Fetch REAL Attendance Data
-  const fetchAttendance = async () => {
-    setIsLoading(true);
-    try {
-      const response = await axios.get(API_URL);
-      setRecords(response.data);
-    } catch (error) {
-      console.error(error);
-      showToast("Failed to fetch attendance records", "error");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+  // --- 1. Fetch Initial Data ---
   useEffect(() => {
+    const fetchAttendance = async () => {
+      setIsLoading(true);
+      try {
+        const response = await axios.get(API_URL, { withCredentials: true });
+        setRecords(response.data);
+      } catch (error) {
+        console.error(error);
+        showToast("Failed to fetch attendance records", "error");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
     fetchAttendance();
   }, []);
 
-  // Update filter state if the URL changes while already on the page
+  // --- 2. Real-Time WebSocket Connection ---
+  useEffect(() => {
+    const socket = io(SOCKET_URL, {
+      withCredentials: true,
+      transports: ["websocket", "polling"],
+    });
+
+    socket.on("attendance_updated", (updatedRecord) => {
+      setRecords((prevRecords) => {
+        const index = prevRecords.findIndex(
+          (rec) => rec.id === updatedRecord.id,
+        );
+
+        if (index !== -1) {
+          const newRecords = [...prevRecords];
+          newRecords[index] = updatedRecord;
+          return newRecords;
+        } else {
+          return [updatedRecord, ...prevRecords];
+        }
+      });
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
+
   useEffect(() => {
     const urlFilter = searchParams.get("filter");
-    if (urlFilter) {
-      setFilter(urlFilter);
-    }
+    if (urlFilter) setFilter(urlFilter);
   }, [searchParams]);
 
-  // Submit the Correction to the Backend
+  // --- 3. Submit Correction ---
   const handleSaveCorrection = async () => {
     if (!correctionForm.punchOutTime || !correctionForm.reason) {
       showToast("Please provide both a time and a reason.", "error");
@@ -72,41 +94,52 @@ export function AdminAttendanceCorrection() {
     }
 
     try {
-      // ✅ Real API Call to your Express Backend
-      const response = await axios.put(
+      await axios.put(
         `${API_URL}/${editingRecord.id}/correct`,
         {
           punchOutTime: correctionForm.punchOutTime,
           reason: correctionForm.reason,
         },
-      );
-
-      // Update the specific record in the UI
-      setRecords(
-        records.map((rec) =>
-          rec.id === editingRecord.id ? response.data : rec,
-        ),
+        { withCredentials: true },
       );
 
       showToast(
         `Timesheet corrected for ${editingRecord.user.name}`,
         "success",
       );
-      setEditingRecord(null); // Close modal
-      setCorrectionForm({ punchOutTime: "17:00", reason: "" }); // Reset form
+      setEditingRecord(null);
+      setCorrectionForm({ punchOutTime: "17:00", reason: "" });
     } catch (error) {
-      showToast("Failed to save correction", "error");
+      showToast(
+        error.response?.data?.error || "Failed to save correction",
+        "error",
+      );
     }
   };
 
-  // Filter records based on tabs and search
+  // --- 4. Dynamic Logic & Filtering ---
+  const isToday = (dateString) => {
+    const today = new Date();
+    const recordDate = new Date(dateString);
+    return today.toDateString() === recordDate.toDateString();
+  };
+
+  // Calculate how many records actually need fixing
+  const correctionCount = records.filter(
+    (rec) => !rec.punchOut && !isToday(rec.date),
+  ).length;
+
   const filteredRecords = records.filter((rec) => {
     const matchesSearch =
       rec.user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       rec.user.empId.toLowerCase().includes(searchQuery.toLowerCase());
+
+    // Needs correction if they went home without punching out yesterday or earlier
+    const needsCorrection = !rec.punchOut && !isToday(rec.date);
+
     const matchesTab =
-      filter === "all" ||
-      (filter === "corrections" && rec.status === "MISSED_PUNCH");
+      filter === "all" || (filter === "corrections" && needsCorrection);
+
     return matchesSearch && matchesTab;
   });
 
@@ -143,10 +176,9 @@ export function AdminAttendanceCorrection() {
               }`}
             >
               Needs Correction
-              {records.filter((r) => r.status === "MISSED_PUNCH").length >
-                0 && (
+              {correctionCount > 0 && (
                 <span className="ml-2 bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-xs">
-                  {records.filter((r) => r.status === "MISSED_PUNCH").length}
+                  {correctionCount}
                 </span>
               )}
             </button>
@@ -210,75 +242,88 @@ export function AdminAttendanceCorrection() {
                   </td>
                 </tr>
               ) : (
-                filteredRecords.map((rec) => (
-                  <tr
-                    key={rec.id}
-                    className="border-b border-gray-100 hover:bg-gray-50/50 transition-colors group"
-                  >
-                    <td className="p-4">
-                      <div className="font-medium text-sm">{rec.user.name}</div>
-                      <div className="text-xs text-gray-500 font-mono">
-                        {rec.user.empId}
-                      </div>
-                    </td>
-                    <td className="p-4 text-sm text-gray-600">
-                      {new Date(rec.date).toLocaleDateString()}
-                    </td>
-                    <td className="p-4 text-sm font-mono">
-                      {rec.punchIn
-                        ? new Date(rec.punchIn).toLocaleTimeString([], {
+                filteredRecords.map((rec) => {
+                  const needsFix = !rec.punchOut && !isToday(rec.date);
+                  const isWorking = !rec.punchOut && isToday(rec.date);
+
+                  return (
+                    <tr
+                      key={rec.id}
+                      className="border-b border-gray-100 hover:bg-gray-50/50 transition-colors group"
+                    >
+                      <td className="p-4">
+                        <div className="font-medium text-sm">
+                          {rec.user.name}
+                        </div>
+                        <div className="text-xs text-gray-500 font-mono">
+                          {rec.user.empId}
+                        </div>
+                      </td>
+                      <td className="p-4 text-sm text-gray-600">
+                        {new Date(rec.date).toLocaleDateString()}
+                      </td>
+                      <td className="p-4 text-sm font-mono">
+                        {rec.punchIn
+                          ? new Date(rec.punchIn).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })
+                          : "—"}
+                      </td>
+                      <td className="p-4 text-sm font-mono">
+                        {rec.punchOut ? (
+                          new Date(rec.punchOut).toLocaleTimeString([], {
                             hour: "2-digit",
                             minute: "2-digit",
                           })
-                        : "—"}
-                    </td>
-                    <td className="p-4 text-sm font-mono">
-                      {rec.punchOut ? (
-                        new Date(rec.punchOut).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })
-                      ) : (
-                        <span className="text-red-400 font-sans italic text-xs">
-                          Missing
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-4">
-                      {rec.status === "MISSED_PUNCH" ? (
-                        <Badge
-                          variant="error"
-                          className="flex items-center gap-1 w-max"
-                        >
-                          <AlertCircle className="w-3 h-3" /> Missed Punch
-                        </Badge>
-                      ) : rec.status === "PRESENT" ? (
-                        <Badge variant="success">Present</Badge>
-                      ) : (
-                        <Badge variant="default">{rec.status}</Badge>
-                      )}
-                      {rec.isManualEntry && (
-                        <div className="text-[10px] text-gray-400 mt-1 uppercase tracking-wider">
-                          Manual Override
-                        </div>
-                      )}
-                    </td>
-                    <td className="p-4 text-right">
-                      {rec.status === "MISSED_PUNCH" ? (
-                        <button
-                          onClick={() => setEditingRecord(rec)}
-                          className="px-3 py-1.5 bg-black text-white text-xs font-medium rounded-sm hover:opacity-90 transition-opacity flex items-center gap-2 ml-auto"
-                        >
-                          <Edit2 className="w-3 h-3" /> Fix Punch
-                        </button>
-                      ) : (
-                        <span className="text-xs text-gray-400 flex items-center justify-end gap-1">
-                          <Check className="w-3 h-3" /> Verified
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))
+                        ) : (
+                          <span className="text-gray-400 font-sans italic text-xs">
+                            --:--
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-4">
+                        {needsFix ? (
+                          <Badge
+                            variant="error"
+                            className="flex items-center gap-1 w-max"
+                          >
+                            <AlertCircle className="w-3 h-3" /> Missed Punch
+                          </Badge>
+                        ) : isWorking ? (
+                          <Badge className="bg-blue-50 text-blue-700 border-blue-200">
+                            Working
+                          </Badge>
+                        ) : (
+                          <Badge variant="success">Present</Badge>
+                        )}
+                        {rec.isManualEntry && (
+                          <div className="text-[10px] text-gray-400 mt-1 uppercase tracking-wider">
+                            Manual Override
+                          </div>
+                        )}
+                      </td>
+                      <td className="p-4 text-right">
+                        {needsFix ? (
+                          <button
+                            onClick={() => setEditingRecord(rec)}
+                            className="px-3 py-1.5 bg-black text-white text-xs font-medium rounded-sm hover:opacity-90 transition-opacity flex items-center gap-2 ml-auto"
+                          >
+                            <Edit2 className="w-3 h-3" /> Fix Punch
+                          </button>
+                        ) : isWorking ? (
+                          <span className="text-xs text-blue-500 flex items-center justify-end gap-1 font-medium">
+                            <Clock className="w-3 h-3" /> Active
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400 flex items-center justify-end gap-1">
+                            <Check className="w-3 h-3" /> Verified
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -357,7 +402,7 @@ export function AdminAttendanceCorrection() {
                       Reason / Audit Note
                     </label>
                     <textarea
-                      placeholder="e.g., Professor forgot to scan face at exit, confirmed left campus at 5:00 PM."
+                      placeholder="e.g., Forgot to scan face at exit, confirmed left campus at 5:00 PM."
                       value={correctionForm.reason}
                       onChange={(e) =>
                         setCorrectionForm({
