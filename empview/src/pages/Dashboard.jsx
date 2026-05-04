@@ -36,6 +36,8 @@ export default function Dashboard({ onNavigate }) {
     fetchData();
   }, []);
 
+  console.log("Dashboard Data:", dashboardData);
+
   const stats = dashboardData
     ? [
         {

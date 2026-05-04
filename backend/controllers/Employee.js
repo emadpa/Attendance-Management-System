@@ -886,6 +886,13 @@ exports.autoCreateWFHAttendance = async (req, res) => {
 /* ────────────────────────────────────────────────────────────────────
    GET ATTENDANCE STATUS - for dashboard circular progress
    ──────────────────────────────────────────────────────────────────── */
+function formatDateLocal(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 exports.getAttendanceStatus = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -930,45 +937,7 @@ exports.getAttendanceStatus = async (req, res) => {
       orderBy: { date: "desc" },
     });
 
-    /* ── holidays (only weekday holidays count against working days) ── */
-    const holidays = await prisma.holiday.findMany({
-      where: {
-        organizationId: user.organizationId,
-        date: { gte: startDate, lte: today },
-      },
-    });
-
-    // Only subtract holidays that fall on weekdays
-    const weekdayHolidayCount = holidays.filter((h) => {
-      const day = new Date(h.date).getDay();
-      return day !== 0 && day !== 6;
-    }).length;
-
-    // Build a Set of holiday date keys for O(1) lookup
-    const holidayKeys = new Set(
-      holidays.map((h) => h.date.toISOString().split("T")[0]),
-    );
-
-    /* ── count working days (weekdays from startDate up to today) ── */
-    let totalWorkingDays = 0;
-    for (let d = new Date(startDate); d <= today; d.setDate(d.getDate() + 1)) {
-      const dow = d.getDay();
-      if (dow !== 0 && dow !== 6) totalWorkingDays++;
-    }
-    totalWorkingDays -= weekdayHolidayCount;
-
-    /* ── present days: PRESENT + LATE both count as attended ─────── */
-    const presentDays = attendanceRecords.filter(
-      (r) => r.status === "PRESENT" || r.status === "LATE",
-    ).length;
-
-    const percentage =
-      totalWorkingDays > 0
-        ? Math.round((presentDays / totalWorkingDays) * 100)
-        : 0;
-
     /* ── today's attendance record ────────────────────────────── */
-
     const todayUTC = new Date(
       Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()),
     );
@@ -977,6 +946,83 @@ exports.getAttendanceStatus = async (req, res) => {
     const todayAttendance = await prisma.attendance.findUnique({
       where: { userId_date: { userId, date: todayUTC } },
     });
+
+    /* ── holidays (only weekday holidays count) ───────────────── */
+    const holidays = await prisma.holiday.findMany({
+      where: {
+        organizationId: user.organizationId,
+        date: { gte: startDate, lte: today },
+      },
+    });
+
+    // Build a Set of holiday date keys for O(1) lookup
+    const holidayKeys = new Set(
+      holidays.map((h) => formatDateLocal(new Date(h.date))),
+    );
+
+    /* ── approved leaves (only count weekday leaves) ──────────── */
+    const leaveRequests = await prisma.leaveRequest.findMany({
+      where: {
+        userId,
+        status: "APPROVED",
+        startDate: { lte: today },
+        endDate: { gte: startDate },
+      },
+      select: {
+        startDate: true,
+        endDate: true,
+      },
+    });
+
+    // Build a Set of leave date keys (only weekdays, excluding weekends & holidays)
+    const leaveKeys = new Set();
+    leaveRequests.forEach((lr) => {
+      const s = new Date(lr.startDate);
+      const e = new Date(lr.endDate);
+      for (
+        let d = new Date(s);
+        d <= e && d <= today;
+        d.setDate(d.getDate() + 1)
+      ) {
+        const dow = d.getDay();
+        const dateKey = formatDateLocal(d);
+        // Only count if it's a weekday and not already a holiday
+        if (dow !== 0 && dow !== 6 && !holidayKeys.has(dateKey)) {
+          leaveKeys.add(dateKey);
+        }
+      }
+    });
+
+    /* ── count ACTUAL working days (excluding leaves & holidays) ── */
+    let totalWorkingDays = 0;
+    for (let d = new Date(startDate); d < today; d.setDate(d.getDate() + 1)) {
+      const dow = d.getDay();
+      const dateKey = formatDateLocal(d);
+
+      // Count only weekdays that are NOT holidays and NOT leave days
+      if (
+        dow !== 0 &&
+        dow !== 6 &&
+        !holidayKeys.has(dateKey) &&
+        !leaveKeys.has(dateKey)
+      ) {
+        totalWorkingDays++;
+      }
+    }
+
+    console.log(todayAttendance);
+    if (todayAttendance !== null && todayAttendance.punchOut !== null)
+      totalWorkingDays++;
+
+    /* ── present days: PRESENT + LATE both count as attended ─────── */
+    const presentDays = attendanceRecords.filter(
+      (r) => r.punchIn !== null && r.punchOut !== null,
+    ).length;
+
+    const percentage =
+      totalWorkingDays > 0
+        ? Math.round((presentDays / totalWorkingDays) * 100)
+        : 0;
 
     /* ── today's leave (use normalized midnight dates) ────────── */
     const todayLeave = await prisma.leaveRequest.findFirst({
@@ -1163,7 +1209,10 @@ exports.getAttendanceReport = async (req, res) => {
       presentDays = 0,
       absentDays = 0,
       lateDays = 0,
-      leaveDays = 0;
+      leaveDays = 0,
+      // weekendDays = 0,
+      holidayDays = 0; // Add separate counters
+
     let totalLateMinutes = 0,
       totalOvertimeMinutes = 0,
       totalWorkedMinutes = 0,
@@ -1199,7 +1248,8 @@ exports.getAttendanceReport = async (req, res) => {
 
       const leaveInfo = leaveMap[dateKey] ?? null;
 
-      if (!isWeekend && !isHoliday) totalWorkingDays++;
+      // Count working days (excluding weekends, holidays, and leaves)
+      if (!isWeekend && !isHoliday && !leaveInfo) totalWorkingDays++;
 
       let status;
       if (rec?.status) status = rec.status;
@@ -1227,7 +1277,13 @@ exports.getAttendanceReport = async (req, res) => {
       } else if (status === "ABSENT") {
         absentDays++;
       } else if (status === "ON_LEAVE") {
-        leaveDays++;
+        // Only count actual leave days (excluding weekends and holidays)
+
+        if (!isWeekend && !isHoliday) {
+          leaveDays++;
+        } else if (isWeekend || isHoliday) holidayDays++;
+      } else if (status === "WEEKEND" || status === "HOLIDAY") {
+        holidayDays++;
       }
 
       const hh = Math.floor(hoursWorked);
@@ -1267,7 +1323,6 @@ exports.getAttendanceReport = async (req, res) => {
         });
       }
     }
-
     const attendanceRate =
       totalWorkingDays > 0
         ? Math.round((presentDays / totalWorkingDays) * 100)
@@ -1310,7 +1365,7 @@ exports.getAttendanceReport = async (req, res) => {
           presentDays,
           absentDays,
           lateDays,
-          leaveDays,
+          leaveDays, // Now only counts working days taken as leave
           totalDays: totalWorkingDays,
           totalOvertimeMinutes,
           totalLateMinutes,
@@ -1323,9 +1378,9 @@ exports.getAttendanceReport = async (req, res) => {
         breakdown: [
           { label: "Present", value: presentDays, color: "#6366f1" },
           { label: "Absent", value: absentDays, color: "#ef4444" },
-          { label: "Late", value: lateDays, color: "#f97316" },
-          { label: "On Leave", value: leaveDays, color: "#06b6d4" },
-          { label: "Holiday", value: weekdayHolidayCount, color: "#10b981" },
+          { label: "On Leave", value: leaveDays, color: "#06b6d4" }, // Only working days
+          { label: "Holiday", value: holidayDays, color: "#10b981" }, // Only weekday holidays
+          // { label: "Weekend", value: weekendDays, color: "#64748b" }, // All weekends
         ].filter((b) => b.value > 0),
         trend,
         leaveBalances: leaveBalances.map((b) => ({
@@ -1344,6 +1399,8 @@ exports.getAttendanceReport = async (req, res) => {
       .json({ success: false, message: "Internal server error" });
   }
 };
+
+// ... (attendanceRate, avgDailyHours, shiftHours calculations remain the same)
 
 function emptyReport(year, month, startDate, user) {
   return {
@@ -2775,7 +2832,7 @@ exports.getMonthlyAttendance = async (req, res) => {
     const userId = req.user.id;
 
     const now = new Date();
-    const month = parseInt(req.query.month ?? now.getMonth() + 1, 10); // 1-based
+    const month = parseInt(req.query.month ?? now.getMonth() + 1, 10);
     const year = parseInt(req.query.year ?? now.getFullYear(), 10);
 
     if (month < 1 || month > 12 || isNaN(month) || isNaN(year)) {
@@ -2827,35 +2884,51 @@ exports.getMonthlyAttendance = async (req, res) => {
     const isAtJoiningMonth = thisMonthStart <= joiningMonthStart;
     const isAtCurrentMonth = thisMonthStart >= currentMonthStart;
 
-    /* ── fetch attendance records ───────────────────────────────── */
-    const records = await prisma.attendance.findMany({
-      where: {
-        userId,
-        date: { gte: monthStart, lte: monthEnd },
-      },
-      select: {
-        date: true,
-        punchIn: true,
-        punchOut: true,
-        status: true,
-        lateDuration: true,
-        overtimeDuration: true,
-      },
-    });
+    /* ── fetch all in parallel ──────────────────────────────────── */
+    const [records, holidays, leaveRequests] = await Promise.all([
+      prisma.attendance.findMany({
+        where: {
+          userId,
+          date: { gte: monthStart, lte: monthEnd },
+        },
+        select: {
+          date: true,
+          punchIn: true,
+          punchOut: true,
+          status: true,
+          lateDuration: true,
+          overtimeDuration: true,
+        },
+      }),
 
+      prisma.holiday.findMany({
+        where: {
+          organizationId: user.organizationId,
+          date: { gte: monthStart, lte: monthEnd },
+        },
+        select: { date: true, name: true },
+      }),
+
+      prisma.leaveRequest.findMany({
+        where: {
+          userId,
+          status: "APPROVED",
+          startDate: { lte: monthEnd },
+          endDate: { gte: monthStart },
+        },
+        select: {
+          startDate: true,
+          endDate: true,
+          leaveType: { select: { name: true, isPaid: true } },
+        },
+      }),
+    ]);
+
+    /* ── build lookup maps ──────────────────────────────────────── */
     const recordMap = {};
     records.forEach((r) => {
       const key = r.date.toISOString().split("T")[0];
       recordMap[key] = r;
-    });
-
-    /* ── fetch holidays ─────────────────────────────────────────── */
-    const holidays = await prisma.holiday.findMany({
-      where: {
-        organizationId: user.organizationId,
-        date: { gte: monthStart, lte: monthEnd },
-      },
-      select: { date: true, name: true },
     });
 
     const holidayMap = {};
@@ -2864,26 +2937,14 @@ exports.getMonthlyAttendance = async (req, res) => {
       holidayMap[key] = h.name;
     });
 
-    /* ── fetch approved leaves ──────────────────────────────────── */
-    const leaveRequests = await prisma.leaveRequest.findMany({
-      where: {
-        userId,
-        status: "APPROVED",
-        startDate: { lte: monthEnd },
-        endDate: { gte: monthStart },
-      },
-      select: {
-        startDate: true,
-        endDate: true,
-        leaveType: { select: { name: true, isPaid: true } },
-      },
-    });
-
     const leaveMap = {};
     leaveRequests.forEach((lr) => {
-      const start = new Date(lr.startDate);
       const end = new Date(lr.endDate);
-      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      for (
+        let d = new Date(lr.startDate);
+        d <= end;
+        d.setDate(d.getDate() + 1)
+      ) {
         const key = formatDateLocal(d);
         leaveMap[key] = {
           name: lr.leaveType?.name ?? "Leave",
@@ -2892,7 +2953,7 @@ exports.getMonthlyAttendance = async (req, res) => {
       }
     });
 
-    /* ── build day array (all days in month) ────────────────────── */
+    /* ── build day array ────────────────────────────────────────── */
     const totalDays = monthEnd.getDate();
     const days = [];
 
@@ -2953,14 +3014,22 @@ exports.getMonthlyAttendance = async (req, res) => {
 
     /* ── monthly summary ────────────────────────────────────────── */
     const workingDays = days.filter(
-      (d) => !d.isWeekend && !d.isHoliday && !d.isBeforeJoining && !d.isFuture,
+      (d) =>
+        !d.isWeekend &&
+        !d.isHoliday &&
+        !d.leaveInfo && // ← leave days excluded
+        !d.isBeforeJoining &&
+        !d.isFuture,
     );
+
     const summary = {
       present: days.filter((d) => d.status === "PRESENT" || d.status === "LATE")
         .length,
       absent: days.filter((d) => d.status === "ABSENT").length,
       late: days.filter((d) => d.lateDuration > 0).length,
-      onLeave: days.filter((d) => d.status === "ON_LEAVE").length,
+      onLeave: days.filter(
+        (d) => d.status === "ON_LEAVE" && !d.isWeekend && !d.isHoliday, // ← only actual working days on leave
+      ).length,
       overtime: days.filter((d) => d.overtimeDuration > 0).length,
       holidays: days.filter((d) => d.isHoliday).length,
       workingDaysTotal: workingDays.length,
@@ -2988,7 +3057,7 @@ exports.getMonthlyAttendance = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("[getAttendanceTimeline]", error);
+    console.error("[getMonthlyAttendance]", error);
     return res
       .status(500)
       .json({ success: false, message: "Internal server error" });
